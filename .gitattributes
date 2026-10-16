@@ -1,0 +1,3 @@
+# Scripts run inside WSL; CRLF line endings break bash. Keep every text file LF.
+* text=auto eol=lf
+*.ps1 text eol=crlf

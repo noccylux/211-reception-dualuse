@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["dualuse*"]
+
+[project]
+name = "dualuse"
+version = "0.1.0"
+description = "Dual-Use Hackathon (InnovateLA, USC, 2026-10-16 to 18) build"
+requires-python = ">=3.14"
+dependencies = [
+    # Service and demo
+    "fastapi",
+    "uvicorn[standard]",
+    "streamlit",
+    "httpx",
+    "pydantic",
+    "python-dotenv",
+    # Partner and model APIs
+    "anthropic",
+    "retell-sdk",
+    # Data and maps
+    "numpy",
+    "pandas",
+    "plotly",
+    "pydeck",
+    # Local models on the GPU
+    "torch",
+]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu132" }
+
+[[tool.uv.index]]
+name = "pytorch-cu132"
+url = "https://download.pytorch.org/whl/cu132"
+explicit = true

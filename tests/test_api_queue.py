@@ -1,6 +1,9 @@
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
+from dualuse import evaluation
 from dualuse.api import app
 
 
@@ -115,6 +118,52 @@ def test_simulate_runs_the_three_policies_on_a_labeled_scenario(client):
     assert set(result["results"]) == {"fifo", "rules", "model"}
     assert result["results"]["fifo"]["by_true_tier"]["immediate"]["calls"] >= 0
     assert result["spec"]["operators"] == 3
+
+
+SCENARIO = {
+    "duration_s": 3600, "arrivals_per_hour": 60, "operators": 3,
+    "tier_mix": {"immediate": 0.05, "priority": 0.25, "normal": 0.7},
+    "mean_service_s": 300, "mean_patience_s": 900, "decision_delay_s": 45,
+    "miss_rate": 0.05, "false_alarm_rate": 0.1, "seed": 3, "max_normal_wait_s": 1800,
+}
+
+
+def test_simulate_adds_policies_at_rates_measured_on_recorded_messages(client, evaluation_file):
+    evaluation_file()
+    result = client.post("/simulate", json={**SCENARIO, "measured_text": "english"}).json()
+    assert set(result["results"]) == {"fifo", "rules", "model", "rules_measured", "model_measured"}
+    # The fixture's one needs-a-person message (also the subset) was NORMAL, its routine message PRIORITY.
+    assert result["measured"]["rates"]["model"]["assigned_mix"]["immediate"]["normal"] == 1.0
+    assert result["results"]["model_measured"]["assigned_share"]["normal"] == pytest.approx(
+        sum(result["results"]["fifo"]["by_true_tier"][t]["calls"] for t in ("immediate", "priority"))
+        / sum(result["results"]["fifo"]["by_true_tier"][t]["calls"] for t in ("immediate", "priority", "normal")))
+    assert result["measured"]["label"] == "Recorded SMS (test fixture), proxy labels"
+    original = client.post("/simulate", json={**SCENARIO, "measured_text": "original"}).json()
+    assert original["results"]["rules_measured"]["assigned_share"]["unknown"] == 1.0  # every original was UNKNOWN
+    assert original["results"]["rules_measured"]["misses"] == 0
+
+
+def test_simulate_without_an_evaluation_runs_the_assumed_policies_only(client):
+    result = client.post("/simulate", json=SCENARIO).json()
+    assert set(result["results"]) == {"fifo", "rules", "model"} and result["measured"] is None
+
+
+def test_the_evaluation_endpoint_serves_summaries_without_message_rows(client, evaluation_file):
+    assert client.get("/evaluation").json() == {"available": False}
+    evaluation_file()
+    body = client.get("/evaluation").json()
+    assert body["available"] and "rows" not in body
+    assert body["summaries"]["fifo"]["english"]["by_construction"]
+    assert body["assigned_mix"]["original"]["model"]["normal"] == {"immediate": 0.0, "priority": 0.0, "unknown": 1.0, "normal": 0.0}
+
+
+def test_a_malformed_evaluation_file_fails_loudly(client, evaluation_file):
+    evaluation_file().write_text("{not json", encoding="utf-8")
+    response = client.post("/simulate", json=SCENARIO)
+    assert response.status_code == 500 and "malformed" in response.text
+    evaluation.RESULTS.write_text(json.dumps({"label": "x", "generated_at": "x", "summaries": {}}), encoding="utf-8")
+    response = client.post("/simulate", json=SCENARIO)
+    assert response.status_code == 500 and "lacks measured rates" in response.text
 
 
 def test_simulate_rejects_a_tier_mix_that_does_not_sum_to_one(client):

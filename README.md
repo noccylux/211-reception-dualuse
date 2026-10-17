@@ -62,6 +62,10 @@ The following is a team-written scenario, not a real call:
    content and Austin arrivals, and inject. Team-written scripts (simulated) and
    Munro disaster messages (recorded, labeled per call) fill the queue while
    life threats move to the top. The surge makes about 30 model calls.
+10. Scenario simulator: the measured-rates table shows the offline rules and
+    Claude on recorded 2010 Haiti and Pakistan SMS and Hurricane Sandy posts
+    (proxy labels, first message only, not 211 calls). Run the replay to compare
+    assumed error rates with the tiers measured there, on the same simulated surge.
 
 SQLite saves calls, conversations, events and review tasks to
 `.tmp/211-queue.sqlite3` by default (`DUALUSE_QUEUE_DB` overrides it). Reset explicitly
@@ -75,9 +79,14 @@ clears this desk. There is no authentication: use only local demo data.
 
 Tests use isolated databases and no paid model calls; `tests/test_ui.py` drives
 the Streamlit app with `AppTest` against the in-process API. The scenario
-simulator still uses synthetic calls and assumed classifier error rates; it does
-not measure Claude accuracy or real queue waits. A real-data evaluation is
-separate work.
+simulator uses synthetic calls with assumed error rates and, once the evaluation
+has run, tier shares measured on recorded disaster messages with proxy labels
+([evaluation](docs/evaluation.md)). Neither is 211 accuracy or a real queue
+wait. Rerunning the evaluation replays cached Claude responses for free:
+
+```text
+bash scripts/uv-run.sh env -u ANTHROPIC_API_KEY python scripts/evaluate_messages.py
+```
 
 Details: [architecture](docs/architecture.md), change records
 [008](docs/changes/2026-10-17-008-reception-agent.md) and

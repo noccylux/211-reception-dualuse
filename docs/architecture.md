@@ -52,7 +52,8 @@ Retell voice bridge ([voice.md](voice.md)), labeled origin `phone`. Design and h
 | `dualuse/storage.py` | SQLite snapshot of the desk. |
 | `dualuse/api.py` | Validated HTTP boundary; one persistent desk per process. |
 | `dualuse/ui.py` | Caller conversation, operator desk, incident reports, scenario simulator, about page. Panels refresh every 2 s. |
-| `dualuse/triage.py`, `simulation.py`, `surge.py` | Queue policies and the offline three-policy simulation. |
+| `dualuse/triage.py`, `simulation.py`, `surge.py` | Queue policies and the offline policy simulation, with assumed error rates or measured tier shares. |
+| `dualuse/evaluation.py`, `scripts/evaluate_messages.py` | First-turn evaluation on recorded disaster messages with proxy labels: each sampled message through a fresh desk in offline and Claude modes; Wilson intervals; measured tier shares for the simulator ([evaluation.md](evaluation.md)). |
 | `dualuse/voice_bridge.py` | Separate process connecting Retell phone calls to the desk through the REST API only; see [voice.md](voice.md). |
 
 ## Conversation turn
@@ -126,9 +127,10 @@ unverified candidate association that never lowers anyone's priority.
 | Typed messages in the caller view | live | The demo conversation |
 | `dualuse/surge_scripts.py` | simulated, team-written | Surge callers in English, Spanish and Mandarin |
 | Munro disaster response messages, test split, English translation ([datasets](datasets.md)) | recorded, CC BY 4.0 | First messages of surge callers, labeled per call; not 211 calls |
+| Munro test split, direct messages, English translation and original text, with the dataset's categories as proxy labels | recorded, CC BY 4.0 | First-turn evaluation of the offline and Claude tiers ([evaluation.md](evaluation.md)); not 211 calls, so not 211 accuracy |
 | Austin APD 911 Calls for Service, busiest day 2026-06-06 | recorded | Time-compressed surge arrival pattern; police dispatch, not 211 |
 | 211 LA January 2025 after-action report, Appendix D | recorded, daily aggregates | Crisis figures above; scenario simulator defaults |
-| Scenario simulator | simulated, assumed error rates | Offline policy comparison; it does not call Claude |
+| Scenario simulator | simulated calls; assumed error rates, plus tier shares measured in the evaluation when `data/processed/eval_messages.json` exists | Offline policy comparison; it does not call Claude |
 
 `docs/datasets.md` lives in the main checkout until this branch merges.
 
@@ -138,7 +140,9 @@ unverified candidate association that never lowers anyone's priority.
   an error, flags the call and makes a non-immediate call UNKNOWN.
 - Each message is at most 4,000 characters, 32,000 per conversation. Caller
   text is escaped before display. No authentication: run on localhost only.
-- Not measured: extraction accuracy on real data, latency under load, Mandarin
+- Tier accuracy is measured only on recorded disaster messages with proxy labels, first
+  message only ([evaluation.md](evaluation.md)), not on 211 calls or whole
+  conversations. Not measured: latency under load, Mandarin
   and Spanish quality beyond the smoke checks in record 009.
 
 Startup and the demo path: [README](../README.md).

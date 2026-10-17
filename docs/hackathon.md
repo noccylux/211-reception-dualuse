@@ -32,8 +32,13 @@ on Friday at 18:00; nobody starts with a pre-built project.
 - AI tools are allowed; list every one used in the submission.
 - Teams of 2 to 4, locked Fri 21:00. In person only.
 - Must be present Fri 17:00 and Sun 12:00.
-- Submission: one Devpost project by **Sat 2026-10-17 22:00**, no extensions,
-  with deck, demo video, code and teammates.
+- Submission: one Devpost project by **Sat 2026-10-17 22:00**, no extensions.
+  The Participant Hub (Google Doc linked from Devpost, last updated Sat
+  2026-10-17, read Sat 13:15 PT) lists: name, lens and one line; a pitch deck
+  of at most 10 slides; a demo video under 3 minutes, which must cover the
+  prompts of teams that used Retell AI or IBM Bob; the code repository; all
+  teammates; a responsible-use note. Optional but recommended: a poster PDF
+  (Twist 3).
 - Three twists change the problem. The original rule was to answer each within
   6 hours on the portal; the organizers lifted that limit (reported by the
   user, Sat 2026-10-17 09:50 PT), so all three responses go with the final
@@ -42,10 +47,15 @@ on Friday at 18:00; nobody starts with a pre-built project.
 Twist 3 update (announcement relayed by the user Sat 2026-10-17): submit a
 poster with Devpost by **Sat 2026-10-17 22:00 PT** for printing for Sunday's
 demo day. The poster upload field is announced to be available by
-**Sat 2026-10-17 13:00 PT**; its availability and file specifications have
-not been checked. The announcement also reiterates that the four open
-awards, including Best Demo, are open to non-finalists. Exact text and the
-separate portal-response timing are in [problem/twists.md](problem/twists.md#twist-3).
+**Sat 2026-10-17 13:00 PT**. The Participant Hub asks for "POSTER PDF",
+optional but recommended, which the organizers can print; it gives no size.
+The live Devpost form was not checked. Devpost's help center says a
+hackathon's file-upload field takes one file of up to 35 MB, so a deck and a
+poster sharing that field would have to be combined. The announcement also
+reiterates that the four open awards, including Best Demo, are open to
+non-finalists. The Hub's update of Sat 2026-10-17 also says twists no longer
+need responses within six hours. Exact text is in
+[problem/twists.md](problem/twists.md#twist-3).
 
 ## Schedule
 
@@ -69,10 +79,16 @@ separate portal-response timing are in [problem/twists.md](problem/twists.md#twi
 | Sat 22:30 | Midnight Games | RTH |
 | Sun 10-18 00:00 | Seven finalists notified | Portal |
 | Sun 09:00 | Finalist decks due (tech check) | |
-| Sun 12:00 | Demo floor opens; non-finalists demo live | Ginsburg Hall |
-| Sun 13:15 | Seven finalist pitches, 5 minutes each | Ginsburg Hall |
-| Sun 14:30 | Judges deliberate | Ginsburg Hall |
-| Sun 15:30 | Awards, close | Ginsburg Hall |
+| Sun 11:00 | Demo area opens; every non-finalist team demos live; guests and judges vote (was 12:00) | Ginsburg Hall |
+| Sun 12:15 | Seven finalist pitches, 5 minutes each, then every award is announced (was 13:15) | Ginsburg Hall |
+| Sun 14:00 | Awards, photos, close (was 15:30) | Ginsburg Hall |
+
+The Sunday times follow the Participant Hub update of Sat 2026-10-17, read
+Sat 13:15 PT. The Hub still shows older times elsewhere (finals 11:00 to
+14:00; Best Live Demo judges on the floor 12:00 to 14:30), and the Devpost
+overview shows the original schedule; confirm in the room. The original
+schedule also had judges deliberating at 14:30; the updated Hub schedule does
+not list it. The halls are from the original schedule.
 
 ## Judging
 
@@ -85,7 +101,8 @@ Five criteria, 1 to 5 points each; dual-use fit breaks ties.
 5. Demo and pitch
 
 Round 1 (Sat night): a review committee scores every Devpost project and
-names seven finalists. Round 2 (Sun 13:15): finalists pitch; on the demo
+names seven finalists. Round 2 (Sun 12:15 after the Hub update, originally
+13:15): finalists pitch; on the demo
 floor every judge counts equally, at the finals the three questioning judges
 carry more weight.
 

@@ -20,9 +20,10 @@ Retell voice bridge ([voice.md](voice.md)), labeled origin `phone`. Design and h
   in a conversation, moves life threats ahead, sends people in danger to the
   emergency number and hands off with context.
 - Global (Twist 2): a line profile switches language, emergency numbers and
-  address conventions with the same queue rules. Built: Los Angeles 211 and a
-  China 12345 citizen service hotline (110, 119, 120). The 12345 facts are to be
-  verified before the pitch.
+  address conventions with the same queue rules. Built: Los Angeles 211 and
+  China's 12345 government service hotline (110, 119, 120). The 12345 facts were
+  checked Sat 2026-10-17 ([twists.md](problem/twists.md#twist-2)); 122 (traffic
+  accidents) is not in the profile, and the operator summary stays English.
 - Defense end user (Twist 1): an installation emergency communications line
   would be a third profile. Planned, not built.
 

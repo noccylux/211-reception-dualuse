@@ -152,6 +152,9 @@ Dataset setup is documented in [datasets.md](datasets.md).
 
 ## Failure behavior and limits
 
+- Public deployment: the caller desk and simulator are available at `https://demo.211deskdemo.site/`.
+  The incident-map iframe still uses the local API URL; external visitors cannot load it until
+  an HTTPS map route and browser-facing URL are configured. See [release verification](changes/2026-10-17-020-main-release.md).
 - Model mode: 20 s timeout, no retries, up to 4,000 output tokens because
   hidden thinking counts against the limit. A failed turn keeps the message, shows
   an error, flags the call and makes a non-immediate call UNKNOWN.

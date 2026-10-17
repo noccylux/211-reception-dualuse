@@ -1,8 +1,9 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from dualuse import api
 from dualuse.holdqueue import HoldQueue
-from dualuse.mapview import MapSync
+from dualuse.mapview import MapSync, new_map_app
 
 
 def map_calls(sync):
@@ -61,3 +62,31 @@ def test_mounted_map_serves_its_page_and_the_desk_calls():
     assert [c["call_id"] for c in geo["calls"]] == [created["call_id"]]
     state = client.get("/state").json()
     assert state["map"]["error"] is None and state["map"]["calls"] == 1
+
+
+def test_public_map_url_host_is_accepted_for_reads_and_page_mutations(monkeypatch):
+    # Behind a tunnel the browser sends the public Host and Origin, and uvicorn takes the scheme from the proxy.
+    monkeypatch.setenv("DUALUSE_MAP_URL", "https://demo.example.org/")
+    app = new_map_app("la-211")
+    public = TestClient(app, base_url="https://demo.example.org")
+    assert "CrisisFusion" in public.get("/").text
+    token = public.get("/api/geo/state").json()["csrf_token"]
+    mutation = public.post("/api/geo/config", json={"enabled": True},
+                           headers={"Origin": "https://demo.example.org", "X-CrisisFusion-Geo": token})
+    assert mutation.status_code == 200
+    assert TestClient(app, base_url="http://127.0.0.1").get("/health").status_code == 200
+    assert TestClient(app, base_url="https://other.example.org").get("/health").status_code == 403
+
+
+def test_map_accepts_only_loopback_without_a_public_map_url(monkeypatch):
+    monkeypatch.delenv("DUALUSE_MAP_URL", raising=False)
+    app = new_map_app("la-211")
+    assert TestClient(app, base_url="http://localhost").get("/health").status_code == 200
+    assert TestClient(app, base_url="https://demo.example.org").get("/health").status_code == 403
+
+
+@pytest.mark.parametrize("value", ["demo.example.org", "ftp://demo.example.org", "https://"])
+def test_malformed_public_map_url_fails_loudly(monkeypatch, value):
+    monkeypatch.setenv("DUALUSE_MAP_URL", value)
+    with pytest.raises(ValueError, match="DUALUSE_MAP_URL"):
+        new_map_app("la-211")

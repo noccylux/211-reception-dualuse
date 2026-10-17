@@ -11,14 +11,17 @@ passed only as display labels.
 """
 import hashlib
 import json
+import os
 import threading
 import time
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 
 from crisisfusion_map import create_app
 from dualuse.profiles import PROFILES
 
 SYNC_INTERVAL_S = 1.0
+LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 
 
 class SwappableApp:
@@ -31,8 +34,19 @@ class SwappableApp:
         await self.app(scope, receive, send)
 
 
+def map_hosts() -> tuple[str, ...]:
+    """Loopback, plus the public host of DUALUSE_MAP_URL when a tunnel serves the map to outside browsers."""
+    url = os.environ.get("DUALUSE_MAP_URL")
+    if not url:
+        return LOOPBACK_HOSTS
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        raise ValueError(f"DUALUSE_MAP_URL must be an http(s) URL with a host, got {url!r}")
+    return LOOPBACK_HOSTS + (parts.hostname,)
+
+
 def new_map_app(profile: str):
-    app = create_app(db_path=":memory:", area=PROFILES[profile].map_area.spec())
+    app = create_app(db_path=":memory:", allowed_hosts=map_hosts(), area=PROFILES[profile].map_area.spec())
     # Enabling only shows calls on the bundled boundary; official feeds,
     # geocoding, base tiles and device location stay behind their own buttons.
     app.state.geo.configure({"enabled": True})

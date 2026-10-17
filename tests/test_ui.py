@@ -62,6 +62,21 @@ def test_the_sidebar_switches_the_line_profile(desk):
     assert queue.profile == "cn-12345"
 
 
+@pytest.mark.parametrize(("map_url", "src"), [
+    (None, "http://localhost:8000/plugins/map/?line=la-211"),
+    ("", "http://localhost:8000/plugins/map/?line=la-211"),  # WSLENV can forward an empty variable
+    ("https://demo.example.org/", "https://demo.example.org/plugins/map/?line=la-211"),
+])
+def test_the_incident_map_frame_uses_the_browser_facing_map_url(desk, monkeypatch, map_url, src):
+    if map_url is None:
+        monkeypatch.delenv("DUALUSE_MAP_URL", raising=False)
+    else:
+        monkeypatch.setenv("DUALUSE_MAP_URL", map_url)
+    app = run_app()
+    app.sidebar.radio[0].set_value("Incident map").run()
+    assert [frame.proto.src for frame in app.get("iframe")] == [src]
+
+
 def test_caller_text_is_shown_literally_to_caller_and_operator(desk):
     queue, _ = desk
     call = queue.add()

@@ -27,6 +27,12 @@ Open <http://localhost:8501>. For an isolated demo alongside the original ports:
 .\scripts\uv-run.ps1 env DUALUSE_API_URL=http://127.0.0.1:8020 streamlit run dualuse/ui.py --server.address 127.0.0.1 --server.port 8521 --server.headless true
 ```
 
+To show the incident map to visitors through a tunnel, route the public
+hostname's `/plugins/map/` path to the API and start both API and UI with
+`DUALUSE_MAP_URL` set to the public URL, for example
+`.\scripts\uv-run.ps1 env DUALUSE_MAP_URL=https://demo.211deskdemo.site uvicorn ...`
+([architecture](docs/architecture.md#failure-behavior-and-limits)).
+
 Keep one API process per database: do not use multiple workers. `ANTHROPIC_API_KEY`
 selects the Claude interview; the sidebar also offers explicitly labeled English
 keyword mode and FIFO without interviewing. Model failures remain visible and

@@ -8,6 +8,8 @@ import plotly.graph_objects as go
 import streamlit as st
 
 API_URL = os.environ.get("DUALUSE_API_URL", "http://localhost:8000")
+# The viewer's browser loads the map frame, so behind a tunnel it needs the public URL, not the server-side API_URL.
+MAP_URL = (os.environ.get("DUALUSE_MAP_URL") or API_URL).rstrip("/")
 TIER_ICON = {"immediate": "🔴", "priority": "🟠", "unknown": "⚪", "normal": "🟢"}
 POLICY_TEXT = {"fifo": "FIFO", "rules": "Keyword rules · assumed rates", "rules_measured": "Keyword rules · measured tiers",
                "model": "Claude · assumed rates (sliders)", "model_measured": "Claude · measured tiers"}
@@ -361,7 +363,7 @@ elif view == "Incident map":
         st.caption(f"{status['other_lines']} calls answered under another line profile are not drawn on this map.")
     # Not a timed fragment: re-rendering would reload the iframe. The plugin page has its own refresh.
     # The profile in the URL reloads the frame when the desk switches line and the map app is replaced.
-    st.components.v1.iframe(f"{API_URL}/plugins/map/?line={status['profile']}", height=1500, scrolling=True)
+    st.components.v1.iframe(f"{MAP_URL}/plugins/map/?line={status['profile']}", height=1500, scrolling=True)
 elif view == "Scenario simulator":
     st.markdown(
         "**Simulated.** A synthetic surge from the parameters below, replayed under several queue policies with the "

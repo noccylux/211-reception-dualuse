@@ -153,8 +153,15 @@ Dataset setup is documented in [datasets.md](datasets.md).
 ## Failure behavior and limits
 
 - Public deployment: the caller desk and simulator are available at `https://demo.211deskdemo.site/`.
-  The incident-map iframe still uses the local API URL; external visitors cannot load it until
-  an HTTPS map route and browser-facing URL are configured. See [release verification](changes/2026-10-17-020-main-release.md).
+  The running API and UI use `DUALUSE_MAP_URL=https://demo.211deskdemo.site`; the tunnel's first
+  route sends that hostname's `^/plugins/map/` path to port 8000, before the UI route to port 8501.
+  The visitor's browser loads the incident map itself, so a public map needs two things: a tunnel
+  route that sends `/plugins/map/` on the public hostname to the API, and `DUALUSE_MAP_URL` set to
+  that public URL in the environment of both API and UI processes (the UI does not read `.env`).
+  The UI then points the map frame there, and the map accepts
+  that host in addition to loopback. Unset, the frame uses `DUALUSE_API_URL` and the map stays
+  loopback only. Map buttons then work for any visitor, as the rest of the public desk does. See
+  [public map URL](changes/2026-10-17-021-public-map-url.md).
 - Model mode: 20 s timeout, no retries, up to 4,000 output tokens because
   hidden thinking counts against the limit. A failed turn keeps the message, shows
   an error, flags the call and makes a non-immediate call UNKNOWN.

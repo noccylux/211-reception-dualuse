@@ -26,8 +26,7 @@ DEMO_NOTICE = "This is a hackathon demonstration line, not a real 211 service."
 ENGLISH_ONLY = "This phone line works in English only."
 # Spoken at once while the desk's interview runs, which can take seconds.
 ACK = "Okay."
-HANDOFF = ("An operator now has your case on the demo console. "
-           "Voice transfer to a person is not connected in this demo, so please stay on the line.")
+HANDOFF = "Transferring you to a human operator now. This is the end of the demo."
 STILL_HERE = "I'm still here, and you remain in the queue."
 NOT_RECORDED ="I could not record that. You remain in the queue."
 DESK_DOWN = "The reception system is having a problem right now. You have not been removed from the queue."

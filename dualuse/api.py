@@ -9,13 +9,14 @@ from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from dualuse.config import ROOT
 from dualuse import extract
 from dualuse.holdqueue import Conflict, HeldCall, HoldQueue
 from dualuse.live_surge import arrival_offsets, plan_surge, start_surge
 from dualuse.mapview import MapSync
+from dualuse.shadow import ShadowScorer
 from dualuse.profiles import PROFILES
 from dualuse.samples import SAMPLES
 from dualuse.surge import SurgeSpec, three_policy_comparison
@@ -33,6 +34,8 @@ INVARIANTS = [
     "Phone callers reach the desk only through the Retell voice bridge when it runs. "
     "Voice transfer to a person, dispatch and automatic callback are not connected.",
     "The incident map shows stated locations and official alerts as context; it never changes a tier.",
+    "The map shows only the active line's service area; a call located outside it is flagged for transfer, not answered here.",
+    "The CrisisFusion scorer is a shadow second opinion on the caller's words only; its score never changes a tier or the queue order.",
 ]
 Mode = Literal["model", "rules", "fifo"]
 
@@ -44,16 +47,19 @@ def default_mode() -> Mode:
 QUEUE = HoldQueue(MAX_NORMAL_WAIT_S, db_path=Path(os.environ.get("DUALUSE_QUEUE_DB", str(ROOT / ".tmp/211-queue.sqlite3"))), mode=default_mode())
 SURGE: dict = {}  # the running or last demo surge: thread, stop event and progress status
 SURGE_LOCK = threading.Lock()
-MAP = MapSync(lambda: QUEUE.snapshot())  # late lookup: tests replace QUEUE
+SHADOW = ShadowScorer(lambda: QUEUE.snapshot())  # late lookup: tests replace QUEUE
+MAP = MapSync(lambda: QUEUE.snapshot(), shadow=lambda call_id: SHADOW.opinion(call_id))
 
 
 @asynccontextmanager
 async def lifespan(app):
+    SHADOW.start()
     MAP.start()
     try:
         yield
     finally:
         MAP.stop()
+        SHADOW.stop()
 
 
 app = FastAPI(title="211 reception and hold-queue assistant", lifespan=lifespan)
@@ -65,10 +71,24 @@ async def conflict_handler(request: Request, error: Conflict):
     return JSONResponse(status_code=409, content={"detail": str(error)})
 
 
+class Location(BaseModel):
+    label: str = Field(min_length=1, max_length=300)
+    lat: float = Field(ge=-90, le=90, allow_inf_nan=False)
+    lon: float = Field(ge=-180, le=180, allow_inf_nan=False)
+
+
 class NewCall(BaseModel):
     text: str | None = Field(default=None, max_length=4000)
     # A fixed set, so no client writes its own label into the operator's origin column.
-    origin: Literal["live", "phone"] = "live"
+    origin: Literal["live", "phone", "replay"] = "live"
+    location: Location | None = None
+
+    @model_validator(mode="after")
+    def located_only_in_replay(self):
+        # Coordinates come only from test data, which stays labeled as a replay.
+        if self.location is not None and self.origin != "replay":
+            raise ValueError("location is accepted only for replayed test calls (origin 'replay')")
+        return self
 
 
 class Utterance(BaseModel):
@@ -149,6 +169,7 @@ def check_mode(mode: str):
 def state() -> dict:
     return {**QUEUE.snapshot(), "model_available": extract.model_available(),
             "max_normal_wait_s": MAX_NORMAL_WAIT_S, "invariants": INVARIANTS, "map": dict(MAP.status),
+            "scorer": {**SHADOW.status, "opinions": SHADOW.opinions},
             "profiles": [{"key": p.key, "name": p.name, "languages": list(p.languages)} for p in PROFILES.values()]}
 
 
@@ -196,7 +217,7 @@ def get_call(call_id: str) -> dict:
 def new_call(body: NewCall) -> dict:
     if body.text is not None and not body.text.strip():
         raise HTTPException(422, "utterance cannot be blank")
-    call = QUEUE.add(origin=body.origin)
+    call = QUEUE.add(origin=body.origin, location=body.location.model_dump() if body.location else None)
     return process_turn(call.call_id, body.text) if body.text else one_call(call)
 
 
@@ -295,6 +316,7 @@ def reset(body: Reset) -> dict:
             SURGE["thread"].join(timeout=5)  # its callers stop before the desk is cleared
         QUEUE.reset(mode)
         MAP.reset()
+        SHADOW.reset()
     return state()
 
 

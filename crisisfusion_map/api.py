@@ -11,14 +11,14 @@ from .geo import GeoManager, install_routes
 from .store import StateStore
 
 
-def create_app(db_path=":memory:", allowed_hosts=None, transport=None):
+def create_app(db_path=":memory:", allowed_hosts=None, transport=None, area=None):
     if allowed_hosts is not None and not isinstance(allowed_hosts, (list,tuple,set,frozenset)):
         raise ValueError("allowed_hosts must be a collection of hostnames, not a string or mapping")
     hosts = frozenset(allowed_hosts if allowed_hosts is not None else ("127.0.0.1", "localhost", "::1"))
     if not hosts or any(not isinstance(host,str) or not host or "*" in host or "/" in host or "://" in host for host in hosts):
         raise ValueError("allowed_hosts must explicitly list hostnames, without scheme, port or wildcard")
     store = StateStore(db_path)
-    manager = GeoManager(store, transport=transport)
+    manager = GeoManager(store, transport=transport, area=area)
     static = Path(__file__).resolve().parent / "static"
 
     @asynccontextmanager

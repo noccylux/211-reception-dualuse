@@ -1,5 +1,7 @@
-"""Optional LA County situational map. No location or feed changes call scoring.
+"""Optional situational map for one service area. No location or feed changes call scoring.
 
+The host chooses the service area (boundary, default view, geocoder, official
+feeds); Los Angeles County is the default. The base map itself is world-wide.
 Adapters return attributed observations, not independently authenticated facts.
 Only fixed public endpoints are fetched; caller coordinates never go to feeds.
 """
@@ -22,11 +24,12 @@ from fastapi import HTTPException, Request
 from .store import now
 from .addressing import assess_address
 from .exposure import assess_exposure, get_policy as exposure_policy
-from .geocoding import lookup as lookup_address
+from .geocoding import GEOCODERS
 
 ROOT = Path(__file__).resolve().parent
-BOUNDARY = json.loads((ROOT / 'data/la_county.geojson').read_text(encoding='utf-8'))
-BBOX = BOUNDARY['bbox']
+LA_COUNTY = {'name': 'Los Angeles County', 'boundary': 'la_county.geojson', 'view': [34.1, -118.2, 9],
+             'attribution': 'LA County GIS (simplified)', 'geocoder': 'census', 'providers': ['nws', 'usgs'],
+             'nws_zone': 'CAC037', 'locality': r'\b(?:Los Angeles|LA County|Santa Monica|Long Beach|Pasadena|CA|California|9\d{4})\b|洛杉矶|加州'}
 MAX_BYTES = 4_000_000
 REFRESH_SECONDS = 60
 
@@ -69,13 +72,44 @@ def in_ring(lon, lat, ring):
     return inside
 
 
-def in_county(lon, lat):
-    for feature in BOUNDARY['features']:
-        g = feature['geometry']
-        for polygon in ([g['coordinates']] if g['type'] == 'Polygon' else g['coordinates']):
-            if in_ring(lon, lat, polygon[0]) and not any(in_ring(lon, lat, r) for r in polygon[1:]):
-                return True
-    return False
+def bbox_of(boundary):
+    points = [pt for f in boundary['features'] for poly in ([f['geometry']['coordinates']] if f['geometry']['type'] == 'Polygon' else f['geometry']['coordinates']) for ring in poly for pt in ring]
+    return [min(p[0] for p in points), min(p[1] for p in points), max(p[0] for p in points), max(p[1] for p in points)]
+
+
+class ServiceArea:
+    """The host line's jurisdiction. A call located outside it belongs to another line."""
+
+    def __init__(self, spec):
+        required = {'name', 'boundary', 'view', 'attribution', 'geocoder', 'providers', 'locality'}
+        if set(spec) - required - {'nws_zone'} or required - set(spec):
+            raise ValueError('Service area needs exactly: ' + ', '.join(sorted(required)) + ' (and nws_zone with the NWS feed)')
+        if Path(spec['boundary']).name != spec['boundary']:
+            raise ValueError('Boundary must be a file name in the plugin data folder')
+        unknown = set(spec['providers']) - set(PROVIDERS)
+        if unknown or spec['geocoder'] not in GEOCODERS:
+            raise ValueError(f'Unknown provider {sorted(unknown)} or geocoder {spec["geocoder"]}')
+        if 'nws' in spec['providers'] and not re.fullmatch(r'[A-Z]{2}C\d{3}', spec.get('nws_zone', '')):
+            raise ValueError('The NWS feed needs a county UGC code such as CAC037')
+        self.spec = copy.deepcopy(spec)
+        self.name, self.view, self.locality = spec['name'], list(spec['view']), spec['locality']
+        self.boundary = json.loads((ROOT / 'data' / spec['boundary']).read_text(encoding='utf-8'))
+        self.bbox = self.boundary.get('bbox') or bbox_of(self.boundary)
+        self.geocoder = GEOCODERS[spec['geocoder']]
+        self.providers = {key: PROVIDERS[key] for key in spec['providers']}
+
+    def contains(self, lon, lat):
+        for feature in self.boundary['features']:
+            g = feature['geometry']
+            for polygon in ([g['coordinates']] if g['type'] == 'Polygon' else g['coordinates']):
+                if in_ring(lon, lat, polygon[0]) and not any(in_ring(lon, lat, r) for r in polygon[1:]):
+                    return True
+        return False
+
+    def public(self):
+        return {'name': self.name, 'bbox': self.bbox, 'boundary': self.boundary, 'view': self.view,
+                'attribution': self.spec['attribution'],
+                'geocoder': {'id': self.spec['geocoder'], 'name': self.geocoder.NAME, 'note': self.geocoder.NOTE}}
 
 
 def geometry(value):
@@ -124,16 +158,16 @@ async def fetch_json(client, url, params):
 
 class NWSProvider:
     id = 'nws'
-    title = 'NWS · LA County active alerts'
+    title = 'NWS · {area} active alerts'
     source_url = 'https://www.weather.gov/documentation/services-web-api'
     freshness_seconds = 300
-    coverage = 'Active county/zone alerts associated with CAC037; an alert may affect only part of the county.'
+    coverage = 'Active county/zone alerts associated with the county UGC code; an alert may affect only part of the county.'
 
-    async def fetch(self, client, at):
+    async def fetch(self, client, at, area):
         # County UGC includes zone-based and county-based warnings. A CAZ-only
         # query would miss county-based products. This county query was checked
         # against the live endpoint; arbitrary redirects remain disabled.
-        data = await fetch_json(client, 'https://api.weather.gov/alerts/active', {'zone': 'CAC037'})
+        data = await fetch_json(client, 'https://api.weather.gov/alerts/active', {'zone': area.spec['nws_zone']})
         if data.get('pagination', {}).get('next'):
             raise ValueError('NWS result pagination exceeds supported coverage')
         events = []
@@ -165,22 +199,23 @@ class NWSProvider:
                 'occurred_at': p.get('onset') or p.get('effective'), 'updated_at': p.get('sent'), 'expires_at': p.get('expires'),
                 'area_description': text(p.get('areaDesc'), 1500), 'geometry': g,
                 'affected_zones': zone_urls if supported_zones else [],
-                'geometry_note': 'Official alert polygon; may extend outside LA County' if g else 'No polygon supplied; county association only, not a county-wide hazard footprint',
+                'geometry_note': f'Official alert polygon; may extend outside {area.name}' if g else 'No polygon supplied; county association only, not a county-wide hazard footprint',
                 'fetched_at': at.isoformat()})
         return events
 
 
 class USGSProvider:
     id = 'usgs'
-    title = 'USGS · county epicentres, 7 days, M ≥ 2.5'
+    title = 'USGS · {area} epicentres, 7 days, M ≥ 2.5'
     source_url = 'https://earthquake.usgs.gov/fdsnws/event/1/'
     freshness_seconds = 900
-    coverage = 'Earthquake epicentres inside the county boundary, last 7 days, magnitude ≥ 2.5. Not a shaking or damage footprint; excludes outside-county epicentres felt here.'
+    coverage = 'Earthquake epicentres inside the service-area boundary, last 7 days, magnitude ≥ 2.5. Not a shaking or damage footprint; excludes epicentres outside the area that are felt here.'
 
-    async def fetch(self, client, at):
+    async def fetch(self, client, at, area):
+        bbox = area.bbox
         data = await fetch_json(client, 'https://earthquake.usgs.gov/fdsnws/event/1/query', {
             'format': 'geojson', 'starttime': (at-timedelta(days=7)).isoformat(), 'endtime': at.isoformat(),
-            'minlongitude': BBOX[0], 'minlatitude': BBOX[1], 'maxlongitude': BBOX[2], 'maxlatitude': BBOX[3],
+            'minlongitude': bbox[0], 'minlatitude': bbox[1], 'maxlongitude': bbox[2], 'maxlatitude': bbox[3],
             'minmagnitude': 2.5, 'eventtype': 'earthquake', 'orderby': 'time', 'limit': 1000})
         if len(data['features']) >= 1000:
             raise ValueError('USGS result reached query limit; coverage incomplete')
@@ -191,7 +226,7 @@ class USGSProvider:
             if not g or g['type'] != 'Point':
                 raise ValueError('Invalid USGS epicentre geometry')
             lon, lat = g['coordinates']
-            if not in_county(lon, lat):
+            if not area.contains(lon, lat):
                 continue
             source = link(p.get('url'), {'earthquake.usgs.gov'})
             if not source:
@@ -211,8 +246,9 @@ PROVIDERS = {p.id: p for p in (NWSProvider(), USGSProvider())}
 
 
 class GeoManager:
-    def __init__(self, engine, transport=None):
+    def __init__(self, engine, transport=None, area=None):
         self.engine, self.transport = engine, transport
+        self.area = ServiceArea(area or LA_COUNTY)
         self.token = secrets.token_urlsafe(32)
         self.refresh_lock = asyncio.Lock()
         self.address_lock = asyncio.Lock()
@@ -223,7 +259,7 @@ class GeoManager:
     def data(self):
         data = self.engine.s.setdefault('geo_plugin', {'enabled': False, 'providers': {
             key: {'enabled': True, 'status': 'not_loaded', 'last_attempt_at': None, 'last_success_at': None, 'error': None, 'events': []}
-            for key in PROVIDERS}, 'caller_locations': {}, 'reports': {}})
+            for key in self.area.providers}, 'caller_locations': {}, 'reports': {}})
         data.setdefault('address_records', {})
         data.setdefault('address_geocodes', {})
         return data
@@ -240,7 +276,7 @@ class GeoManager:
 
     def require_enabled(self):
         if not self.data()['enabled']:
-            raise HTTPException(409, 'Enable the LA County map plugin first')
+            raise HTTPException(409, 'Enable the map plugin first')
 
     def calls(self):
         return {c['call_id']: {'call_id': c['call_id'], 'revision':c.get('revision', 0), 'input_mode': c.get('input_mode'),
@@ -264,11 +300,11 @@ class GeoManager:
             data = self.data()
             at = datetime.now(timezone.utc)
             providers, events = [], []
-            for key, adapter in PROVIDERS.items():
+            for key, adapter in self.area.providers.items():
                 cache = data['providers'][key]
                 last = date(cache['last_success_at'])
                 stale = not last or (at-last).total_seconds() > adapter.freshness_seconds or cache['status'] == 'error'
-                providers.append({k: v for k, v in cache.items() if k != 'events'} | {'id': key, 'title': adapter.title, 'stale': stale, 'source_url': adapter.source_url, 'coverage': adapter.coverage})
+                providers.append({k: v for k, v in cache.items() if k != 'events'} | {'id': key, 'title': adapter.title.format(area=self.area.name), 'stale': stale, 'source_url': adapter.source_url, 'coverage': adapter.coverage})
                 if data['enabled'] and cache['enabled']:
                     for event in cache['events']:
                         expiry = date(event.get('expires_at'))
@@ -281,12 +317,15 @@ class GeoManager:
             if data['enabled']:
                 for call_id in self.calls():
                     call = self.address_call(call_id)
-                    address = assess_address(call, data['address_records'].get(call_id))
+                    address = assess_address(call, data['address_records'].get(call_id), locality=self.area.locality)
                     exposure = assess_exposure(address.get('coordinates'), events, providers, at=at,
                         address_status=address['status'], reports=reports)
-                    assessments.append({'call_id':call_id, 'address':address, 'exposure':exposure,
+                    point = address.get('coordinates')
+                    # Jurisdiction, not risk: a line routes calls located elsewhere to the line that serves them.
+                    service_area = None if not point else 'inside' if self.area.contains(point['lon'], point['lat']) else 'outside'
+                    assessments.append({'call_id':call_id, 'address':address, 'exposure':exposure, 'service_area':service_area,
                         'call_priority':call.get('priority_assessment'), 'synthetic':call.get('input_mode') in ('replay','simulated_voice')})
-            return copy.deepcopy({'enabled': data['enabled'], 'csrf_token': self.token, 'store_id': self.engine.s['store_id'], 'scope': {'name': 'Los Angeles County', 'bbox': BBOX, 'boundary': BOUNDARY},
+            return copy.deepcopy({'enabled': data['enabled'], 'csrf_token': self.token, 'store_id': self.engine.s['store_id'], 'scope': self.area.public(),
                 'providers': providers, 'official_events': events, 'caller_locations': locations, 'reports': reports,
                 'call_assessments':assessments, 'assessment_policy':exposure_policy(), 'address_geocodes':data['address_geocodes'],
                 'calls': list(self.calls().values()), 'service_conditions': self.engine.s['settings'], 'refresh_min_seconds': REFRESH_SECONDS})
@@ -297,7 +336,7 @@ class GeoManager:
         if 'enabled' in payload and type(payload['enabled']) is not bool:
             raise ValueError('enabled must be boolean')
         selected = payload.get('providers', {})
-        if not isinstance(selected, dict) or any(k not in PROVIDERS or type(v) is not bool for k, v in selected.items()):
+        if not isinstance(selected, dict) or any(k not in self.area.providers or type(v) is not bool for k, v in selected.items()):
             raise ValueError('Unknown provider or nonboolean setting')
         with self.engine.lock:
             data = self.data()
@@ -320,7 +359,7 @@ class GeoManager:
                     raise HTTPException(409, 'Internet interruption is enabled; cached data only')
                 at = datetime.now(timezone.utc)
                 todo = []
-                for key in PROVIDERS:
+                for key in self.area.providers:
                     cache = data['providers'][key]
                     attempted = date(cache['last_attempt_at'])
                     if cache['enabled'] and (not attempted or (at-attempted).total_seconds() >= REFRESH_SECONDS):
@@ -331,7 +370,7 @@ class GeoManager:
                     headers={'User-Agent': 'CrisisFusion/0.4 (local research prototype)', 'Accept': 'application/geo+json,application/json'}) as client:
                 async def load(key):
                     try:
-                        values = await asyncio.wait_for(PROVIDERS[key].fetch(client, at), timeout=20)
+                        values = await asyncio.wait_for(self.area.providers[key].fetch(client, at, self.area), timeout=20)
                         return key, values, None
                     except Exception as failure:
                         reason = f'HTTP {failure.response.status_code}' if isinstance(failure, httpx.HTTPStatusError) else 'Network timeout or invalid provider data'
@@ -363,7 +402,7 @@ class GeoManager:
             with self.engine.lock:
                 self.require_enabled()
                 data = self.data()
-                if not data['providers']['nws']['enabled'] or not self.engine.s['settings']['internet_available']:
+                if 'nws' not in self.area.providers or not data['providers']['nws']['enabled'] or not self.engine.s['settings']['internet_available']:
                     raise HTTPException(409, 'NWS provider or internet is disabled')
                 event = next((e for e in data['providers']['nws']['events'] if e['id'] == payload.get('event_id')), None)
                 if event is None:
@@ -400,7 +439,7 @@ class GeoManager:
             with self.engine.lock:
                 if self.data() is not data or not data['enabled'] or not data['providers']['nws']['enabled']:
                     raise HTTPException(409, 'Map state changed during zone lookup; result discarded')
-                event.update(geometry=combined, geometry_loaded_at=now(), geometry_note='Official NWS affected forecast/fire zone boundaries, not an observed disaster perimeter; may extend beyond LA County')
+                event.update(geometry=combined, geometry_loaded_at=now(), geometry_note='Official NWS affected forecast/fire zone boundaries, not an observed disaster perimeter; may extend beyond ' + self.area.name)
                 self.engine._audit('geo_official_zones_loaded', event_id=event['id'], zone_count=len(zones))
                 self.engine._save()
             return self.snapshot()
@@ -423,7 +462,7 @@ class GeoManager:
             if call_id not in self.engine.s['active_calls']:
                 raise HTTPException(409, 'Location requires a call explicitly marked active by the host')
             self.data()['caller_locations'][call_id] = {'call_id': call_id, 'lat': lat, 'lon': lon, 'accuracy_m': accuracy,
-                'captured_at': captured.isoformat(), 'saved_at': now(), 'inside_county': in_county(lon, lat),
+                'captured_at': captured.isoformat(), 'saved_at': now(), 'inside_county': self.area.contains(lon, lat),
                 'source': 'browser_geolocation_client_reported', 'verification': 'Device location with user consent; not independently verified; not incident location'}
             # Do not duplicate precise coordinates in immutable audit history.
             self.engine._audit('geo_device_location_saved', call_id=call_id, consent=True, source='browser_geolocation_client_reported')
@@ -470,7 +509,7 @@ class GeoManager:
                 raise ValueError('Choose an existing call')
             report_id = 'report-' + uuid.uuid4().hex[:12]
             record = {'id': report_id, 'call_id': call_id, 'lat': lat, 'lon': lon, 'label': label, 'note': note,
-                'source_url': source, 'reviewed': reviewed, 'created_at': now(), 'inside_county': in_county(lon, lat),
+                'source_url': source, 'reviewed': reviewed, 'created_at': now(), 'inside_county': self.area.contains(lon, lat),
                 'verification': 'Local operator marked reviewed; not official verification' if reviewed else 'Caller report, unverified',
                 'synthetic': self.calls()[call_id]['input_mode'] in ('replay', 'simulated_voice'), 'hazard_type':hazard_type, **zone}
             self.data()['reports'][report_id] = record
@@ -480,7 +519,7 @@ class GeoManager:
 
     async def geocode_address(self, payload):
         if set(payload)-{'call_id','address','consent','revision'} or payload.get('consent') is not True:
-            raise ValueError('Explicit consent is required to send the entered address to the US Census Geocoder')
+            raise ValueError(f'Explicit consent is required to send the entered address to the {self.area.geocoder.NAME}')
         address = payload.get('address')
         if not isinstance(address, str) or not 8 <= len(address.strip()) <= 300 or any(ord(c) < 32 for c in address):
             raise ValueError('Enter a single address of 8–300 characters, including city/state or ZIP')
@@ -514,22 +553,22 @@ class GeoManager:
                 if attempted and (at-attempted).total_seconds() < 5:
                     raise HTTPException(429, 'Wait 5 seconds before another address lookup')
                 self.address_attempts[call_id] = at
-                self.engine._audit('geo_address_lookup_consent', call_id=call_id, revision=revision, provider='US Census Geocoder', consent=True)
+                self.engine._audit('geo_address_lookup_consent', call_id=call_id, revision=revision, provider=self.area.geocoder.NAME, consent=True)
                 self.engine._save()
             try:
                 async with httpx.AsyncClient(transport=self.transport, timeout=15, follow_redirects=False,
                         headers={'User-Agent':'CrisisFusion/0.5 (local research prototype)'}) as client:
-                    result = await asyncio.wait_for(lookup_address(client, address), 20)
+                    result = await asyncio.wait_for(self.area.geocoder.lookup(client, address, self.area.bbox), 20)
             except Exception:
                 raise HTTPException(502, 'Address lookup unavailable; no verified location was created. Manual confirmation is still available.') from None
             result.update(call_id=call_id, query=address, fetched_at=now(), revision=revision)
             for match in result['matches']:
-                match['inside_county'] = in_county(match['lon'], match['lat'])
+                match['inside_county'] = self.area.contains(match['lon'], match['lat'])
             with self.engine.lock:
                 require_current_request()
                 data['address_geocodes'][call_id] = result
                 current = data['address_records'].get(call_id)
-                if not current or current.get('source') == 'census_geocoder_interpolated':
+                if not current or current.get('source') in {g.SOURCE_ID for g in GEOCODERS.values()}:
                     data['address_records'].pop(call_id, None)
                     if result['status'] == 'single_match':
                         data['address_records'][call_id] = {**result['matches'][0], 'confirmed':False, 'revision':revision,

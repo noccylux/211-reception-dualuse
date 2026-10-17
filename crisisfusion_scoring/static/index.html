@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>独立通话打分器</title><link rel="stylesheet" href="static/style.css"><script defer src="static/app.js"></script></head>
+<body><main><header><p class="eyebrow">CRISISFUSION · SCORING PLUGIN 1.0</p><h1>通话优先级打分器</h1><p>依据原话、未解决需求与等待情况，为人工关注排序。评分是原型规则指数，不是危险概率。</p></header>
+<div class="bands"><span class="IMMEDIATE_HUMAN">80–100 立即人工</span><span class="HUMAN_VERIFY">50–79 人工核查</span><span class="ROUTINE_HUMAN">20–49 常规人工</span><span class="AUTOMATION_ELIGIBLE">0–19 可自动服务</span></div>
+<p id="notice" role="status">正在读取插件状态…</p>
+<div class="layout"><section class="panel"><h2>录入 / 修订通话</h2><form id="call-form"><label>通话 ID<input id="call-id" required maxlength="100" placeholder="call-001"></label><div class="pair"><label>修订号<input id="revision" required type="number" min="1" step="1" value="1"></label><label>语言<select id="language"><option value="en">英语</option><option value="es">西班牙语</option><option value="unknown">中文 / 未知</option><option value="mixed">混合</option></select></label></div><label>来电者累计转写<textarea id="transcript" required rows="6" maxlength="20000" placeholder="I am trapped in a fire."></textarea></label><label>地点文字（可选）<input id="location" maxlength="500"></label><button type="submit">保存并评估</button><p class="muted">同一通话更新时递增修订号。累计转写保留旧内容；旧的未解决危险需求不会被新句子自动清除。</p></form></section>
+<section class="panel"><div class="section-title"><h2>人工处理队列</h2><button id="refresh" class="secondary">刷新</button></div><p class="muted">按类别、同类别人工排序、累计等待排列；每个通话只占一个队列位置。</p><div id="queue"></div></section></div>
+<section class="panel"><h2>通话与评分依据</h2><div id="calls"></div></section>
+<details class="panel"><summary>评分规则与接入信息</summary><p>本插件不访问地图、麦克风或任何外部服务。浏览器界面与 HTTP API 可独立挂载，状态只保存在本插件数据库中。</p><pre id="policy"></pre></details>
+</main></body></html>

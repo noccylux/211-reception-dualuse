@@ -56,6 +56,17 @@ def tier_line(call):
     return f"{TIER_ICON[call['tier']]} {call['call_id']} · {call['tier']}{phone}"
 
 
+def scorer_cell(opinion):
+    """The shadow scorer's view of a call, for display next to our tier; it never changes the tier."""
+    if not opinion:
+        return "—"
+    if not opinion["supported"]:
+        return opinion["note"]
+    if opinion["score"] is None:
+        return opinion["note"]
+    return f"{opinion['score']} · {opinion['band']}" + (" · ⚠ tier and scorer disagree — operator check" if opinion["disagree"] else "")
+
+
 def literal(text):
     """Caller words are untrusted: escape Markdown, math ($) and entities, and break :emoji: codes
     with a zero-width space (Streamlit replaces them even after escaping), so text shows as typed."""
@@ -204,16 +215,28 @@ def operator_panel():
                     call_api("POST", f"/calls/{call['call_id']}/complete")
                     st.rerun(scope="fragment")
     st.subheader("Waiting queue")
+    scorer = state["scorer"]
+    opinions = scorer["opinions"]
+    if scorer["error"]:
+        st.error(literal(f"Shadow scorer stopped updating: {scorer['error']}"))
     if state["waiting"]:
-        st.dataframe([{"call": c["call_id"], "tier": c["tier"], "wait": fmt_wait(c["waited_s"]),
+        st.dataframe([{"call": c["call_id"], "tier": c["tier"],
+                       "shadow scorer (display only)": scorer_cell(opinions.get(c["call_id"])),
+                       "open needs (scorer)": ", ".join((opinions.get(c["call_id"]) or {}).get("needs", [])),
+                       "wait": fmt_wait(c["waited_s"]),
                        "FIFO position": c["fifo_position"] + 1, "tiered position": c["tiered_position"] + 1,
                        "language": c["language"], "processing": c["processing"], "review": c["attention"],
                        "origin": origin_label(c)} for c in state["waiting"]], hide_index=True)
+        st.caption("Shadow scorer: the CrisisFusion Human Attention Index (classmate's English/Spanish rules) reads only "
+                   "the caller's words. It never changes a tier or the queue order. " + scorer["rule"])
     for call in state["waiting"]:
+        opinion = opinions.get(call["call_id"])
         with st.expander(tier_line(call)):
             st.caption(f"Waiting {fmt_wait(call['waited_s'])} · origin: {origin_label(call)} · source: {call['source']} · "
                        f"interview {'running' if call['processing'] else 'idle'} · "
                        f"language: {call['language']} · distress: {call['distress']}")
+            st.caption(f"Shadow scorer (display only): {scorer_cell(opinion)}"
+                       + (f" · open needs: {', '.join(opinion['needs'])}" if opinion and opinion["needs"] else ""))
             if call["attention"]:
                 st.warning(literal(call["attention"]))
             st.text(call["summary"])
@@ -262,11 +285,17 @@ elif view == "Incident map":
     status = initial["map"]
     if status["error"]:
         st.error(f"The map stopped updating: {status['error']}")
-    st.info("LA County map from the CrisisFusion map plugin. Shape shows how far a caller's stated address is "
-            "verified; color shows official NWS alerts or USGS quakes around it, fetched only when you press "
-            "refresh. Grey means unknown, never safe. The map does not change any queue tier.")
+    st.info(f"{status['area']} service area for the active line, from the CrisisFusion map plugin. The base map "
+            "covers the world; only this line's calls are drawn. A call located outside the area is grey and marked "
+            "'outside service area — transfer': real lines route by jurisdiction. Shape shows how far a caller's stated "
+            "address is verified; color shows official alerts or USGS quakes around it, fetched only when you press "
+            "refresh. Grey means unknown or out of area, never safe. Calls with coordinates from test data are labeled "
+            "synthetic replay. The map does not change any queue tier.")
+    if status["other_lines"]:
+        st.caption(f"{status['other_lines']} calls answered under another line profile are not drawn on this map.")
     # Not a timed fragment: re-rendering would reload the iframe. The plugin page has its own refresh.
-    st.components.v1.iframe(f"{API_URL}/plugins/map/", height=1500, scrolling=True)
+    # The profile in the URL reloads the frame when the desk switches line and the map app is replaced.
+    st.components.v1.iframe(f"{API_URL}/plugins/map/?line={status['profile']}", height=1500, scrolling=True)
 elif view == "Scenario simulator":
     st.markdown(
         "**Simulated.** A synthetic surge from the parameters below, replayed under three queue policies with the "

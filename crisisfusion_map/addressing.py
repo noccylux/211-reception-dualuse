@@ -21,6 +21,7 @@ _INTERSECTION = re.compile(rf"(?<![{_LATIN}0-9_]){_STREET}[ \t]*(?:&|\band\b|\ba
 _CHINESE_CIVIC = re.compile(r"[\u4e00-\u9fff]{1,14}(?:大街|大道|街|路|巷)\s*\d{1,6}\s*号")
 _AREAS = re.compile(r"\b(?:Los Angeles(?: County)?|LA County|downtown LA|Santa Monica|Long Beach|Pasadena|Hollywood|Westwood|Burbank|Glendale|Compton|Torrance|Inglewood|Malibu|Lancaster|Palmdale|USC|University of Southern California)\b|洛杉矶(?:县|市)?|南加州大学|帕萨迪纳|圣莫尼卡|长滩", re.I)
 _PLACE = re.compile(r"\b(?:[A-Z][A-Za-z'’-]*[ \t]+){1,3}(?:Hall|Hospital|School|Station|Library|Shelter|Mall|Park)\b")
+_LA_LOCALITY = r"\b(?:Los Angeles|LA County|Santa Monica|Long Beach|Pasadena|CA|California|9\d{4})\b|洛杉矶|加州"
 _EMPTY = {"", "unknown", "unknown location", "unspecified", "n a", "na", "none", "null", "unavailable", "not provided", "未知", "不详", "未提供", "不知道"}
 _ALIASES = {"street":"st", "avenue":"ave", "boulevard":"blvd", "road":"rd", "drive":"dr", "lane":"ln", "court":"ct", "place":"pl", "terrace":"ter", "parkway":"pkwy", "highway":"hwy", "circle":"cir", "north":"n", "south":"s", "east":"e", "west":"w"}
 _RANK = {"civic_address": 4, "intersection": 3, "named_place": 2, "area": 1, "unknown": 0}
@@ -102,8 +103,11 @@ def _mentions(value, revision, source, timestamp, *, label=False):
     return sorted(found, key=lambda c: c["span"][0])
 
 
-def assess_address(call, confirmation=None):
+def assess_address(call, confirmation=None, locality=None):
     """Return an independent, JSON-safe map assessment without mutating inputs.
+
+    ``locality`` is the service area's regex for wording that names its city or
+    postal code; the default is the Los Angeles County wording.
 
     ``confirmation`` is either an operator attestation or an unconfirmed map/
     geocoder point. Its revision must equal the current call revision to remain
@@ -199,7 +203,7 @@ def assess_address(call, confirmation=None):
         missing.append("incident_coordinates")
     if not verified:
         missing.append("human_confirmation")
-    if selected and not re.search(r"\b(?:Los Angeles|LA County|Santa Monica|Long Beach|Pasadena|CA|California|9\d{4})\b|洛杉矶|加州", str(call.get("text", ""))+" "+str(location.get("label", "") if isinstance(location, dict) else ""), re.I):
+    if selected and not re.search(locality or _LA_LOCALITY, str(call.get("text", ""))+" "+str(location.get("label", "") if isinstance(location, dict) else ""), re.I):
         missing.append("city_or_postal_code")
     if conflict and not verified:
         missing.append("conflict_resolution")

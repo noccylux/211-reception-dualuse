@@ -1,9 +1,13 @@
-"""LA County incident map: the vendored CrisisFusion map plugin fed from the hold queue.
+"""Incident map for the active line: the vendored CrisisFusion map plugin fed from the hold queue.
 
 The map is a derived view. It holds no state the desk needs, so it lives in
 memory, is rebuilt from the queue after an API restart, and is replaced on a
-queue reset (call ids restart at call-1). The plugin never changes a tier;
-the tier is passed only as a display label.
+queue reset (call ids restart at call-1) or when the desk switches line
+profile. Each profile brings its own service area (boundary, view, geocoder,
+official feeds); only that line's calls are drawn, and a call located outside
+the area is flagged for transfer, because real lines route by jurisdiction.
+The plugin never changes a tier; the tier and the shadow scorer's band are
+passed only as display labels.
 """
 import hashlib
 import json
@@ -12,12 +16,13 @@ import time
 from datetime import datetime, timezone
 
 from crisisfusion_map import create_app
+from dualuse.profiles import PROFILES
 
 SYNC_INTERVAL_S = 1.0
 
 
 class SwappableApp:
-    """ASGI hop so a queue reset can replace the mounted map app."""
+    """ASGI hop so a queue reset or profile switch can replace the mounted map app."""
 
     def __init__(self, app):
         self.app = app
@@ -26,63 +31,81 @@ class SwappableApp:
         await self.app(scope, receive, send)
 
 
-def new_map_app():
-    app = create_app(db_path=":memory:")
-    # Enabling only shows calls on the bundled county boundary; official feeds,
+def new_map_app(profile: str):
+    app = create_app(db_path=":memory:", area=PROFILES[profile].map_area.spec())
+    # Enabling only shows calls on the bundled boundary; official feeds,
     # geocoding, base tiles and device location stay behind their own buttons.
     app.state.geo.configure({"enabled": True})
     return app
 
 
-def call_payload(call: dict) -> dict:
+def call_payload(call: dict, shadow: dict | None = None) -> dict:
     """One snapshot call as a map plugin call, without the revision."""
     x = call.get("extraction") or {}
+    policy = "dualuse-tier-rules"
+    if shadow and shadow.get("band"):
+        # The band, not the score: the score moves every waiting minute and would churn map revisions.
+        policy += f" · shadow scorer band {shadow['band']} (display only)"
     payload = {
         "call_id": call["call_id"],
         "text": "\n".join(call["transcript"]),
         "language": call["language"],
-        # Injected demo callers are labeled synthetic on the map, like on the desk.
-        "input_mode": "host" if call["origin"] == "live" else "replay",
+        # Typed and phone callers are people; injected and replayed callers are labeled synthetic on the map.
+        "input_mode": "host" if call["origin"] in ("live", "phone") else "replay",
         "timestamp": datetime.fromtimestamp(call["arrival"], timezone.utc).isoformat(),
-        "priority_assessment": {"category": call["tier"].upper(), "policy_version": "dualuse-tier-rules"},
+        "priority_assessment": {"category": call["tier"].upper(), "policy_version": policy},
     }
-    if x.get("location"):
+    if call.get("location"):
+        payload["location"] = {**call["location"], "source": "test_data_replay"}
+    elif x.get("location"):
         payload["location"] = {"label": x["location"], "source": "caller_statement"}
     return payload
 
 
 class MapSync:
-    """Pushes changed calls into the map; a new revision only when content changes."""
+    """Pushes the active line's changed calls into the map; a new revision only when content changes."""
 
-    def __init__(self, snapshot):
+    def __init__(self, snapshot, shadow=None):
         self.snapshot = snapshot
-        self.mounted = SwappableApp(new_map_app())
+        self.shadow = shadow or (lambda call_id: None)
+        self.profile = snapshot()["profile"]
+        self.mounted = SwappableApp(new_map_app(self.profile))
         self.lock = threading.Lock()
         self.pushed: dict[str, tuple[str, int]] = {}  # call_id -> (fingerprint, revision)
-        self.status = {"synced_at": None, "error": None, "calls": 0}
+        self.status = {"synced_at": None, "error": None, "calls": 0, "other_lines": 0,
+                       "profile": self.profile, "area": PROFILES[self.profile].map_area.name}
         self._stop = threading.Event()
         self._thread = None
 
+    def _replace(self, profile: str):
+        old = self.mounted.app
+        self.mounted.app = new_map_app(profile)
+        self.pushed.clear()
+        self.profile = profile
+        self.status.update(profile=profile, area=PROFILES[profile].map_area.name, calls=0)
+        old.state.store.close()
+
     def sync_once(self):
-        calls = self.snapshot()["calls"]
+        snapshot = self.snapshot()
         with self.lock:
+            if snapshot["profile"] != self.profile:
+                self._replace(snapshot["profile"])
+            calls = [c for c in snapshot["calls"] if c["profile"] == self.profile]
             store = self.mounted.app.state.store
             for call in calls:
-                payload = call_payload(call)
+                payload = call_payload(call, self.shadow(call["call_id"]))
                 fingerprint = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
                 last, revision = self.pushed.get(call["call_id"], (None, 0))
                 if fingerprint == last:
                     continue
                 store.upsert_call({**payload, "revision": revision + 1})
                 self.pushed[call["call_id"]] = (fingerprint, revision + 1)
-            self.status.update(synced_at=time.time(), error=None, calls=len(self.pushed))
+            self.status.update(synced_at=time.time(), error=None, calls=len(self.pushed),
+                               other_lines=len(snapshot["calls"]) - len(calls))
 
     def reset(self):
         with self.lock:
-            old = self.mounted.app
-            self.mounted.app = new_map_app()
-            self.pushed.clear()
-            old.state.store.close()
+            self._replace(self.snapshot()["profile"])
 
     def _run(self):
         while not self._stop.wait(SYNC_INTERVAL_S):

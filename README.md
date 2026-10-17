@@ -1,10 +1,12 @@
 # 211 reception and hold-queue assistant
 
 A local text demo for a community and disaster assistance line. A caller joins
-an actual application queue, talks to an automated reception assistant while
-waiting, and passes to an operator with the conversation, evidence and summary.
-Claude proposes contextual follow-up questions and extracts fields; code owns
-queue order, recording and handoff. Telephone service is not connected.
+an actual application queue and talks, in their own language, with an automated
+reception assistant while waiting; the operator then gets the conversation,
+evidence and summary. Claude writes the replies from editable playbooks and
+extracts fields; code owns tiers, queue order, emergency referrals and handoff.
+Line profiles cover Los Angeles 211 and a China 12345 hotline. Telephone service
+is not connected.
 
 ## Run
 
@@ -49,6 +51,16 @@ The following is a team-written scenario, not a real call:
 6. Under **Demo call events**, send two no-response events, or disconnect a call.
    Review the resulting attention flag or callback task from the operator desk.
    These buttons simulate connection events; no silence detector or dialer exists.
+7. Languages: join and write "Mi mamá necesita oxígeno y se fue la luz hace dos
+   horas." The assistant answers in Spanish; the operator card shows `es`.
+8. Twist 2: in the sidebar switch **Line profile** to the 12345 hotline, join,
+   and write "我家楼下被水淹了，我奶奶腿脚不方便，出不去，水还在涨". The welcome, the
+   emergency line (110, 119, 120) and the replies are in Mandarin; the queue
+   rules are unchanged. Switch back to Los Angeles afterwards.
+9. Surge: on the operator desk open **Demo surge**, keep 20 callers, mixed
+   content and Austin arrivals, and inject. Team-written scripts (simulated) and
+   Munro disaster messages (recorded, labeled per call) fill the queue while
+   life threats move to the top. The surge makes about 30 model calls.
 
 SQLite saves calls, conversations, events and review tasks to
 `.tmp/211-queue.sqlite3` by default (`DUALUSE_QUEUE_DB` overrides it). Reset explicitly
@@ -60,10 +72,13 @@ clears this desk. There is no authentication: use only local demo data.
 .\scripts\uv-run.ps1 python -m pytest tests -q
 ```
 
-Tests use isolated databases and no paid model calls. The scenario simulator
-still uses synthetic calls and assumed classifier error rates. It does not
-measure Claude accuracy, real queue waits or trained-model performance. Real-data
-training/evaluation and Retell voice integration remain next steps.
+Tests use isolated databases and no paid model calls; `tests/test_ui.py` drives
+the Streamlit app with `AppTest` against the in-process API. The scenario
+simulator still uses synthetic calls and assumed classifier error rates; it does
+not measure Claude accuracy or real queue waits. A real-data evaluation and the
+Retell voice bridge are separate work.
 
-Details: [architecture](docs/architecture.md), [change record](docs/changes/2026-10-17-008-reception-agent.md),
+Details: [architecture](docs/architecture.md), change records
+[008](docs/changes/2026-10-17-008-reception-agent.md) and
+[009](docs/changes/2026-10-17-009-reception-agent-design.md),
 [event](docs/hackathon.md), [submission](docs/submission.md).

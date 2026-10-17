@@ -122,6 +122,32 @@ Sat 2026-10-17 09:55 PT; implementation follows in this order.
   desk told the caller to call 911, and Claude asked for the address; the
   operator-desk expander stayed open across refreshes.
 
+## P1 and P2 verification, Sat 2026-10-17 10:15-10:40 PT
+
+* Each task was test-first; the suite grew to 140 tests, all passing with
+  `bash scripts/uv-run.sh python -m pytest tests -q` (no paid calls).
+* Real `claude-haiku-5-5` turns through the dev API (127.0.0.1:8040):
+  * English smoke-and-baby report: IMMEDIATE, desk 911 line, an empathetic
+    reply asking for the address; the address "450 Maple Ave, apartment 3B"
+    was kept after the location rule was tightened (dropped once before, when
+    the model appended a note to the field).
+  * Spanish oxygen report: PRIORITY, replies in Spanish, `es` stored.
+  * 12345 profile, Mandarin flood report: Chinese welcome and emergency line
+    naming 110, 119 and 120; the reply asked for the address in Chinese address
+    order; the location "金水区花园路88号，3号楼2单元" was kept.
+  * After defining enough information as knowing the need, four routine
+    questions (210 freeway, free drinking water in Mandarin, rent help in
+    Spanish, CalFresh) were NORMAL; "Hay humo en el pasillo ... no podemos
+    salir" was IMMEDIATE with a Spanish 911 instruction; insulin was PRIORITY.
+* Browser (UI on 127.0.0.1:8541): Spanish and Mandarin conversations above,
+  the profile switch, "$1,200" shown literally, and a 20-caller mixed surge on
+  the Austin pattern: 20 joined, 25 caller turns, no errors; the queue showed
+  English, Spanish and Mandarin callers by tier with per-call origin labels.
+  That run sampled no life-threat script, so scripts are now taken in an
+  interleaved authored order.
+* Not verified: extraction accuracy on real data, latency under heavier load,
+  the 12345 hotline facts, Retell voice.
+
 ## Verification plan
 
 * Each P0 fix gets a failing test first; model behavior uses stub clients;

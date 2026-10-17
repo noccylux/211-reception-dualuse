@@ -1,64 +1,98 @@
 # Architecture: 211 reception desk
 
 Current behavior of the text reception demo on `worktree-comms-211-demo`,
-updated Sat 2026-10-17 PT. This is a local prototype, not a connected telephone
-or emergency dispatch system. Ordinary community assistance and disaster
-surges use the same interview, queue and handoff path.
+updated Sat 2026-10-17 11:00 PT. A local prototype, not a connected telephone
+or emergency dispatch system. Design and history: change records
+[008](changes/2026-10-17-008-reception-agent.md) and
+[009](changes/2026-10-17-009-reception-agent-design.md).
 
-## Components and data flow
+## Dual-use story
+
+- The seat: the supervisor of a 211-type community and disaster assistance line,
+  not a 911 PSAP.
+- Ordinary day: callers ask about benefits, housing, food or road status. While
+  they wait, the assistant talks with them in their language, records the need
+  and hands the operator a summary.
+- Crisis: a wildfire or flood surge. 211 LA's after-action report for the January
+  2025 wildfires lists, for 2025-01-08, 7,815 contacts offered, 60.66% abandoned
+  and a 1 h 23 min average wait. The same build, unchanged, keeps every caller
+  in a conversation, moves life threats ahead, sends people in danger to the
+  emergency number and hands off with context.
+- Global (Twist 2): a line profile switches language, emergency numbers and
+  address conventions with the same queue rules. Built: Los Angeles 211 and a
+  China 12345 citizen service hotline (110, 119, 120). The 12345 facts are to be
+  verified before the pitch.
+- Defense end user (Twist 1): an installation emergency communications line
+  would be a third profile. Planned, not built.
+
+## What is never automated
+
+- The assistant never ends a call or places an outbound call.
+- Code, not the model, decides tier, queue order and handoff; the model may
+  restate only the desk facts it is given.
+- A reported danger is told to call the profile's emergency number, by the desk
+  itself; immediate danger stays flagged until a person reviews it.
+- Unknown information is ranked with priority, never as routine.
+- Only a confirmed handoff completes a transfer; a failure keeps the original
+  arrival time.
+- No dispatch, verification or incident resolution. Reports are unverified.
+
+## Components
 
 | Component | Responsibility |
 |---|---|
-| `dualuse/ui.py` | Caller conversation, operator seats, incident reports, audit history and labeled scenario simulation. Active panels refresh every two seconds. |
-| `dualuse/reception.py` | Claude structured extraction plus one contextual follow-up question. Full role-labeled history is provided each turn. English offline mode uses keywords and a bounded question sequence. |
-| `dualuse/extract.py` | Shared fields, deterministic tier mapping, English baseline and operator summary. |
-| `dualuse/holdqueue.py` | Call lifecycle, ordering, reservations, history, human review tasks and synchronization. |
-| `dualuse/storage.py` | Atomically commit the desk snapshot to SQLite. |
-| `dualuse/api.py` | Validated HTTP boundary and single persistent desk. |
-| `dualuse/triage.py`, `simulation.py`, `surge.py` | Existing queue policies and synthetic scenario comparison. |
+| `dualuse/reception.py` | One structured Claude call per caller turn: reply, extraction, language and distress. Checks the extraction against the caller's words. English offline baseline. |
+| `dualuse/playbooks/*.md` | The agent's editable behavior: core rules, intake, calming, life safety, waiting, handoff. Loaded in name order (core first) into a cached system prompt. |
+| `dualuse/profiles.py` | Line profiles and the desk's own lines (welcome, emergency, handoff, silence, failures) in English, Spanish and Mandarin. |
+| `dualuse/holdqueue.py` | Call lifecycle, ordering, reservations, desk facts for the agent, review flags, callback tasks, persistence. |
+| `dualuse/extract.py` | Fields, deterministic tier mapping, English keyword baseline, operator summary. |
+| `dualuse/live_surge.py`, `surge_scripts.py` | Labeled batch of callers injected into the live desk. |
+| `dualuse/storage.py` | SQLite snapshot of the desk. |
+| `dualuse/api.py` | Validated HTTP boundary; one persistent desk per process. |
+| `dualuse/ui.py` | Caller conversation, operator desk, incident reports, scenario simulator, about page. Panels refresh every 2 s. |
+| `dualuse/triage.py`, `simulation.py`, `surge.py` | Queue policies and the offline three-policy simulation. |
 
-Each caller message is saved before inference. The model receives prior caller
-and assistant turns, but only caller words may support extracted evidence and
-location. The provider output is schema-validated and the quoted evidence and
-location are checked against caller text. These checks do not prove that a report
-is true or that the classification is correct.
+## Conversation turn
 
-The model chooses a follow-up topic and question. The program announces queue,
-recording and handoff facts only after the associated state transition succeeds.
-Question content is guided by the prompt; medical, rescue and dispatch advice is
-out of scope. This is not a validated safety-critical conversation system.
+1. The caller's message is saved; the desk computes this turn's facts: line,
+   address format, emergency number in the caller's language, callers ahead in
+   the active order, tier so far, transfer status.
+2. Claude (`claude-haiku-5-5`, structured output, low effort) receives the
+   playbooks as a cached system prompt, the conversation as user (caller) and
+   assistant (everything said to the caller) turns, and the facts as a final
+   system message.
+3. Quotes and the location are checked against the caller's words after
+   normalizing case, quotes and whitespace. Unverified quotes or locations are
+   dropped and flagged for review; a life threat without a verified quote stays
+   IMMEDIATE with a flag. An empty or oversized reply becomes a fixed question
+   in the caller's language.
+4. Rules map fields to a tier. On a new IMMEDIATE the desk says the emergency
+   line, then the agent's reply follows. The caller's language is kept, so all
+   later desk lines use it.
+
+The offline keyword mode reads English only. Text in Chinese, Korean, Japanese,
+Arabic, Armenian or Cyrillic stays UNKNOWN with a review flag naming the
+language. FIFO mode records messages without classifying them.
 
 ## Lifecycle and concurrency
 
-`waiting -> connecting -> handed_off -> completed`
+`waiting -> connecting -> handed_off -> completed`; `waiting` or `connecting`
+can also end as `hung_up` or `disconnected`.
 
-- Joining adds a welcome identifying the automated assistant and the current
-  number ahead. Queue position is a snapshot, not a promised service time.
-- A caller may disclose new facts throughout waiting; every turn updates fields
-  and records any tier change with its supporting evidence.
-- Claude requests run outside the desk lock. The operator can reserve a call
-  immediately, including during inference. A call version invalidates replies
-  after handoff, disconnect, mode change or reset.
-- Reservation is atomic inside the single API process. One operator cannot hold
-  two calls and two operators cannot reserve the same call.
-- Confirmation completes transfer. Failure returns the call with its original
-  arrival and information. The UI requires explicit confirmation; no telephony
-  provider acknowledgement is connected yet.
-- Caller hang-up and connection loss retain the conversation and reports.
-  Disconnects, silent hang-ups and calls still marked immediate/unknown create
-  callback-review tasks. A human records the disposition; no number is collected
-  and no outbound call is placed in this text prototype.
-- No-response events first ask for a check-in, then mark human attention. They
-  do not classify silence as routine or remove the call. Events are simulated
-  through UI/API controls, not an audio or elapsed-time detector.
-- On restart, unfinished inference and pending transfers are flagged for review;
-  pending transfers return to waiting. Confirmed transfers remain operator-held.
+- Claude runs outside the desk lock. An operator can reserve a call during a
+  turn; a call version discards the late reply. A reservation, hang-up, mode
+  change or restart that interrupts a turn flags the unread caller message for
+  review and raises a NORMAL call to UNKNOWN.
+- Reservation is atomic within the one API process. A failed transfer returns
+  the call with its original arrival. Reservations do not expire yet.
+- Hang-ups and disconnects keep the conversation. Disconnects, silent hang-ups
+  and IMMEDIATE, PRIORITY or UNKNOWN callers who leave get a callback review
+  task; no number is collected and nothing is dialed.
+- No-response events (simulated by buttons) first prompt the caller, then flag
+  the call. On restart, interrupted turns and pending transfers are flagged.
 
-SQLite stores calls, dialogue, extraction, tier, status, reservations, handoffs,
-departures and audit events. The database defaults to `.tmp/211-queue.sqlite3`.
-Use one API process per database. The current snapshot store is sized for a small
-local demo; multi-process dispatch, authentication, retention management and
-production telephony recovery require further work.
+SQLite (`.tmp/211-queue.sqlite3` by default) holds calls, dialogue, extraction,
+tier, profile, language, reservations, handoffs and audit events.
 
 ## Ordering and incident reports
 
@@ -66,42 +100,34 @@ production telephony recovery require further work.
 |---|---:|
 | Immediate: reported life threat now | 0 |
 | Priority: needs a person soon | 1 |
-| Unknown: insufficient information | 1 |
+| Unknown: not enough information yet | 1 |
 | Normal: routine request | 2 |
 
-FIFO applies inside a rank. A normal caller waiting 30 minutes receives rank 1
-for scheduling, without changing the stored risk tier. This does not guarantee
-an upper bound on wait during overload. Immediate danger is retained once flagged;
-subsequent apparent de-escalation calls for human review and preserves the earlier
-risk evidence in the audit trail. There is no arbitrary numeric urgency score.
+FIFO applies within a rank. A normal caller waiting 30 minutes is scheduled at
+rank 1 without changing the stored tier; this is not a maximum wait guarantee.
+Reports are grouped by incident kind and normalized stated location, as an
+unverified candidate association that never lowers anyone's priority.
 
-Reports are associated by incident kind and an exact normalized stated location.
-The grouping persists after handoff or disconnect and does not reduce any call's
-priority. Matching is a candidate association, not geocoding or verified incident
-identity. There is no automatic dispatch, verification or incident resolution.
+## Data sources
+
+| Source | Live / recorded / simulated | Used for |
+|---|---|---|
+| Typed messages in the caller view | live | The demo conversation |
+| `dualuse/surge_scripts.py` | simulated, team-written | Surge callers in English, Spanish and Mandarin |
+| Munro disaster response messages, test split, English translation ([datasets](datasets.md)) | recorded, CC BY 4.0 | First messages of surge callers, labeled per call; not 211 calls |
+| Austin APD 911 Calls for Service, busiest day 2026-06-06 | recorded | Time-compressed surge arrival pattern; police dispatch, not 211 |
+| 211 LA January 2025 after-action report, Appendix D | recorded, daily aggregates | Crisis figures above; scenario simulator defaults |
+| Scenario simulator | simulated, assumed error rates | Offline policy comparison; it does not call Claude |
+
+`docs/datasets.md` lives in the main checkout until this branch merges.
 
 ## Failure behavior and limits
 
-Model mode uses `claude-haiku-5-5`, a 20-second request timeout and no automatic
-retries. A failure saves the message, displays an error and marks human review;
-a non-immediate call becomes Unknown. Offline rules run only when explicitly
-selected (or initially when no key exists). FIFO mode records messages without
-classification or follow-up questions. Calls remain available to operators.
+- Model mode: 20 s timeout, no retries. A failed turn keeps the message, shows
+  an error, flags the call and makes a non-immediate call UNKNOWN.
+- Each message is at most 4,000 characters, 32,000 per conversation. Caller
+  text is escaped before display. No authentication: run on localhost only.
+- Not measured: extraction accuracy on real data, latency under load, Mandarin
+  and Spanish quality beyond the smoke checks in record 009.
 
-Each message is limited to 4,000 characters, with 32,000 total caller characters
-per conversation. A second simultaneous turn on one call is rejected. The desk
-is shared by all browser sessions, with no authentication; run on localhost.
-
-## Evidence and next steps
-
-Typed messages are live demo input; provided scenarios are team-written samples.
-The simulator uses synthetic arrivals, handling/patience times and assumed error
-rates. Its "model" curve does not call Claude. It is not a real-data evaluation.
-No training or evaluation on the downloaded datasets has been added in this task.
-
-Next: evaluate need extraction on the labeled disaster messages, separately
-annotate urgency examples, then connect Retell voice, silence/disconnect events
-and provider-confirmed human transfers to this lifecycle.
-
-Reproducible startup and walkthrough: [README](../README.md).
-Verification results: [change record](changes/2026-10-17-008-reception-agent.md).
+Startup and the demo path: [README](../README.md).

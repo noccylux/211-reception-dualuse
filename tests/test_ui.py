@@ -47,3 +47,40 @@ def test_waiting_call_details_keep_their_label_while_the_wait_grows(desk):
     clock.now += 7
     app.run()
     assert label() == first
+
+
+def run_app():
+    app = AppTest.from_file(str(Path(__file__).parents[1] / "dualuse" / "ui.py"), default_timeout=30)
+    app.run()
+    return app
+
+
+def test_the_sidebar_switches_the_line_profile(desk):
+    queue, _ = desk
+    app = run_app()
+    app.selectbox(key="line_profile").set_value("cn-12345").run()
+    assert queue.profile == "cn-12345"
+
+
+def test_caller_text_is_shown_literally_to_caller_and_operator(desk):
+    queue, _ = desk
+    call = queue.add()
+    raw = "I owe $500 and $200 ![x](http://h/x.png)"
+    queue.say(call.call_id, raw)
+    app = run_app()
+    caller_view = [element.value for element in app.markdown]
+    assert not any(raw in source for source in caller_view)
+    assert any(r"\$500" in source and r"\!\[x\]" in source for source in caller_view)
+    app.sidebar.radio[0].set_value("Operator desk").run()
+    operator_view = [element.value for element in app.markdown]
+    assert not any(raw in source for source in operator_view)
+    assert any(r"\$500" in source for source in operator_view)
+
+
+def test_the_operator_card_shows_the_callers_language_and_distress(desk):
+    queue, _ = desk
+    call = queue.add()
+    queue.say(call.call_id, "我们被困在楼里了")
+    app = run_app()
+    app.sidebar.radio[0].set_value("Operator desk").run()
+    assert any("language: zh" in caption.value and "distress:" in caption.value for caption in app.caption)

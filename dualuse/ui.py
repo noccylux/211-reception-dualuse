@@ -1,5 +1,7 @@
 """Caller conversation and operator desk for the local 211 text demo."""
 import os
+import re
+
 import httpx
 import pandas as pd
 import plotly.graph_objects as go
@@ -49,6 +51,11 @@ def tier_line(call):
     return f"{TIER_ICON[call['tier']]} {call['call_id']} · {call['tier']}"
 
 
+def literal(text):
+    """Caller words are untrusted: escape Markdown, math ($) and emoji codes so they display as typed."""
+    return re.sub(r"([\\`*_{}\[\]()#+\-.!|<>~$:])", r"\\\1", text)
+
+
 st.title("211 Reception")
 st.caption("Local text demonstration · no telephone connection, dispatch, or automatic callback")
 view = st.sidebar.radio("Workspace", ["Caller conversation", "Operator desk", "Incident reports", "Scenario simulator", "About this demo"])
@@ -62,6 +69,12 @@ with st.sidebar:
         st.rerun()
     if not initial["model_available"]:
         st.info("Model credentials are unavailable. Select the labeled offline mode.")
+    names = {p["key"]: p["name"] for p in initial["profiles"]}
+    profile = st.selectbox("Line profile (new calls)", list(names), index=list(names).index(initial["profile"]),
+                           format_func=names.get, key="line_profile")
+    if profile != initial["profile"]:
+        call_api("POST", "/profile", json={"profile": profile})
+        st.rerun()
     st.caption("Use two browser tabs for caller and operator. One shared demo queue; no authentication.")
     with st.expander("Reset local demo"):
         clear = st.checkbox("Clear stored calls, reports and history")
@@ -93,9 +106,10 @@ def caller_panel():
         st.info("Call status: " + call["status"].replace("_", " "))
     if call["error"]:
         st.warning("The last message was saved, but automated processing failed. An operator can review it.")
+    st.caption(f"Line: {next(p['name'] for p in state['profiles'] if p['key'] == call['profile'])}")
     for turn in call["dialogue"]:
         with st.chat_message("user" if turn["speaker"] == "caller" else "assistant"):
-            st.write(turn["text"])
+            st.markdown(literal(turn["text"]))
     if call["processing"]:
         st.caption("The assistant is processing your message. An operator can still take over.")
     text = st.chat_input("Tell the assistant what is happening", disabled=call["status"] != "waiting" or call["processing"])
@@ -144,7 +158,7 @@ def operator_panel():
                 st.text(call["summary"])
                 with st.expander("Full conversation", expanded=False):
                     for turn in call["dialogue"]:
-                        st.write(f"{turn['speaker']}: {turn['text']}")
+                        st.markdown(literal(f"{turn['speaker']}: {turn['text']}"))
                 if call["status"] == "connecting":
                     cols = st.columns(2)
                     if cols[0].button("Confirm human takeover", key=f"confirm-{call['transfer_id']}"):
@@ -164,13 +178,14 @@ def operator_panel():
     for call in state["waiting"]:
         with st.expander(tier_line(call)):
             st.caption(f"Waiting {fmt_wait(call['waited_s'])} · source: {call['source']} · "
-                       f"interview {'running' if call['processing'] else 'idle'}")
+                       f"interview {'running' if call['processing'] else 'idle'} · "
+                       f"language: {call['language']} · distress: {call['distress']}")
             if call["attention"]:
-                st.warning(call["attention"])
+                st.warning(literal(call["attention"]))
             st.text(call["summary"])
             st.write(call["extraction"] or "No extraction yet")
             for turn in call["dialogue"]:
-                st.write(f"{turn['speaker']}: {turn['text']}")
+                st.markdown(literal(f"{turn['speaker']}: {turn['text']}"))
     tasks = [c for c in state["calls"] if c["callback_status"] == "pending_review"]
     if tasks:
         st.subheader("Callback review · no automatic dialing")
@@ -195,10 +210,10 @@ def incident_panel():
     st.info("Unverified caller reports. Matching kind and stated location suggests a possible shared incident; it does not verify the event or dispatch anyone.")
     for cluster in state["clusters"]:
         with st.container(border=True):
-            st.subheader(f"{cluster['kind']} · {cluster['location']}")
+            st.subheader(literal(f"{cluster['kind']} · {cluster['location']}"))
             st.write(f"{cluster['count']} reports · " + ", ".join(cluster["call_ids"]))
             for call_id, situation in zip(cluster["call_ids"], cluster["situations"]):
-                st.write(f"{call_id}: {situation}")
+                st.markdown(literal(f"{call_id}: {situation}"))
     if not state["clusters"]:
         st.caption("Reports appear when callers identify an incident and its location.")
 

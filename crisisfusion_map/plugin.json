@@ -1,0 +1,20 @@
+{
+  "id": "crisisfusion-map",
+  "version": "1.0.0",
+  "contract_version": "1.0",
+  "python_package": "crisisfusion_map",
+  "factory": "crisisfusion_map:create_app",
+  "cli": "python -m crisisfusion_map",
+  "default_port": 8812,
+  "default_enabled": false,
+  "dependencies_on_other_plugins": [],
+  "ui": {"path": "/", "mount_prefix_supported": true, "embedding": "same-origin iframe or ASGI mount"},
+  "input": {"type": "call_snapshot", "required": ["call_id", "revision", "text"], "optional": ["language", "timestamp", "event_id", "location", "input_mode", "priority_assessment"], "revision": "positive monotonic integer; identical current revision is idempotent; reused event_id with different data rejected"},
+  "public_methods": ["app.state.store.upsert_call(payload)", "app.state.store.set_active_call(call_id, active=True)", "app.state.geo.snapshot()"],
+  "http": {"state": "GET /api/geo/state", "calls": "POST /api/geo/calls", "activity": "POST /api/geo/calls/{call_id}/active", "health": "GET /health", "schema": "GET /openapi.json"},
+  "security": {"default_allowed_hosts": ["127.0.0.1", "localhost", "::1"], "write_headers": ["Origin: same scheme and authority", "X-CrisisFusion-Geo: csrf_token from state"], "token_is_authentication": false, "remote_host_requires_authentication": true, "gps": "explicit host activity AND explicit per-capture user consent", "automatic_external_requests": false},
+  "network": {"nws": "https://api.weather.gov/", "usgs": "https://earthquake.usgs.gov/", "census_optional_query": "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress", "osm_optional_basemap": "https://tile.openstreetmap.org/"},
+  "state": {"storage": "SQLite plaintext JSON", "workers": 1, "default_factory_db": ":memory:", "default_cli_db": "work/map.sqlite3", "active_calls_persist_across_restart": false, "identity": "persistent UUID store_id returned by GET /api/geo/state; stable across restart, different for new stores"},
+  "outputs": ["address assessment with source quotes and revision", "independent exposure assessment", "map visualization", "optional host-provided score display"],
+  "limitations": ["prototype rules; no measured address accuracy percentage", "county limited to Los Angeles County", "NWS weather polygon is not fire perimeter", "USGS epicenter is not shaking/damage area", "no official live shooting perimeter integration", "local manual circles are unverified operator-defined areas", "no dispatch or telephone geolocation"]
+}

@@ -2,6 +2,7 @@
 import math
 import os
 import threading
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
 from typing import Literal
@@ -14,6 +15,7 @@ from dualuse.config import ROOT
 from dualuse import extract
 from dualuse.holdqueue import Conflict, HeldCall, HoldQueue
 from dualuse.live_surge import arrival_offsets, plan_surge, start_surge
+from dualuse.mapview import MapSync
 from dualuse.profiles import PROFILES
 from dualuse.samples import SAMPLES
 from dualuse.surge import SurgeSpec, three_policy_comparison
@@ -30,9 +32,9 @@ INVARIANTS = [
     "Normal callers gain scheduling priority after 30 minutes; this is not a maximum wait guarantee.",
     "Phone callers reach the desk only through the Retell voice bridge when it runs. "
     "Voice transfer to a person, dispatch and automatic callback are not connected.",
+    "The incident map shows stated locations and official alerts as context; it never changes a tier.",
 ]
 Mode = Literal["model", "rules", "fifo"]
-app = FastAPI(title="211 reception and hold-queue assistant")
 
 
 def default_mode() -> Mode:
@@ -42,6 +44,20 @@ def default_mode() -> Mode:
 QUEUE = HoldQueue(MAX_NORMAL_WAIT_S, db_path=Path(os.environ.get("DUALUSE_QUEUE_DB", str(ROOT / ".tmp/211-queue.sqlite3"))), mode=default_mode())
 SURGE: dict = {}  # the running or last demo surge: thread, stop event and progress status
 SURGE_LOCK = threading.Lock()
+MAP = MapSync(lambda: QUEUE.snapshot())  # late lookup: tests replace QUEUE
+
+
+@asynccontextmanager
+async def lifespan(app):
+    MAP.start()
+    try:
+        yield
+    finally:
+        MAP.stop()
+
+
+app = FastAPI(title="211 reception and hold-queue assistant", lifespan=lifespan)
+app.mount("/plugins/map", MAP.mounted)
 
 
 @app.exception_handler(Conflict)
@@ -132,7 +148,7 @@ def check_mode(mode: str):
 
 def state() -> dict:
     return {**QUEUE.snapshot(), "model_available": extract.model_available(),
-            "max_normal_wait_s": MAX_NORMAL_WAIT_S, "invariants": INVARIANTS,
+            "max_normal_wait_s": MAX_NORMAL_WAIT_S, "invariants": INVARIANTS, "map": dict(MAP.status),
             "profiles": [{"key": p.key, "name": p.name, "languages": list(p.languages)} for p in PROFILES.values()]}
 
 
@@ -278,6 +294,7 @@ def reset(body: Reset) -> dict:
             SURGE["stop"].set()
             SURGE["thread"].join(timeout=5)  # its callers stop before the desk is cleared
         QUEUE.reset(mode)
+        MAP.reset()
     return state()
 
 

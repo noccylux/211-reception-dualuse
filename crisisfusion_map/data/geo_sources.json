@@ -1,0 +1,16 @@
+{
+  "downloaded_at_utc": "2026-10-17T16:35:10.359317+00:00",
+  "boundary_source": "https://arcgis.gis.lacounty.gov/arcgis/rest/services/DRP/ZNET_Public/MapServer/0",
+  "boundary_query": "https://arcgis.gis.lacounty.gov/arcgis/rest/services/DRP/ZNET_Public/MapServer/0/query?where=OBJECTID%3D120&outFields=*&outSR=4326&f=geojson&maxAllowableOffset=0.0001&geometryPrecision=5",
+  "bbox": [
+    -118.9447,
+    32.7996,
+    -117.64639,
+    34.8233
+  ],
+  "points": 5011,
+  "sha256": "81c8bdcd598dcc669b33c45d99afc77914c2ac53cca4e42c8fe988e47be09d7a",
+  "leaflet_version": "1.9.4",
+  "leaflet_integrity": "Both JS and CSS match published official SRI SHA256 values",
+  "leaflet_source": "https://leafletjs.com/download.html"
+}

@@ -29,6 +29,11 @@ Required by the rules. Add each tool when it is first used.
 | Claude API (Anthropic SDK, `claude-haiku-5-5`) | The reception agent's replies in the caller's language from playbooks, and structured caller-field extraction; code controls tier rules, emergency referrals and handoff |
 | Retell AI | Phone numbers, speech-to-text and text-to-speech for voice callers; the desk's own logic produces every reply (branch `voice-retell-bridge`) |
 
+Third-party code: `crisisfusion_map/` is the CrisisFusion map plugin 1.0.0,
+written by a classmate as a separate demo. We translated its UI strings to
+English and changed one test path; its logic is unchanged. Before submitting, name its author and list the AI tools they used.
+Leaflet 1.9.4 (BSD-2-Clause) ships inside it.
+
 ## Pitch outline (5 minutes)
 
 1. The problem in LA, in one concrete scene.

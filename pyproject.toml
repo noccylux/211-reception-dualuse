@@ -3,7 +3,10 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["dualuse*"]
+include = ["dualuse*", "crisisfusion_map*"]
+
+[tool.setuptools.package-data]
+crisisfusion_map = ["plugin.json", "static/*", "static/vendor/leaflet/*", "data/*"]
 
 [project]
 name = "dualuse"

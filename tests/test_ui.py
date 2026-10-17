@@ -128,3 +128,36 @@ def test_the_operator_desk_marks_a_phone_call_and_says_voice_is_not_transferred(
     queue.claim("operator-1")
     app.run()
     assert any("Voice transfer is not connected" in info.value for info in app.info)
+
+
+def replay_table(app):
+    return next(frame.value for frame in app.dataframe if "policy" in frame.value.columns)
+
+
+def test_the_simulator_labels_measured_rates_and_replays_them_next_to_assumed_ones(desk, evaluation_file):
+    evaluation_file()
+    app = run_app()
+    app.sidebar.radio[0].set_value("Scenario simulator").run()
+    captions = " ".join(caption.value for caption in app.caption)
+    assert "Recorded SMS (test fixture), proxy labels" in captions and "not 211 accuracy" in captions
+    measured = next(frame.value for frame in app.dataframe if "method" in frame.value.columns)
+    assert list(measured["method"].unique()) == ["FIFO (reference)", "Offline keyword rules", "Claude model mode"]
+    assert measured.iloc[0]["miss: needs a person → NORMAL"] == "100% by construction"
+    app.radio(key="measured_text").set_value("original").run()
+    shares = next(frame.value for frame in app.dataframe if "simulated true tier" in frame.value.columns)
+    assert list(shares["UNKNOWN"]) == ["100%"] * 6  # the fixture's originals were all UNKNOWN
+    app.button(key="run_replay").click().run()
+    policies = set(replay_table(app)["policy"])
+    assert policies == {"FIFO", "Keyword rules · assumed rates", "Keyword rules · measured tiers",
+                        "Claude · assumed rates (sliders)", "Claude · measured tiers"}
+    assert any("(Original text, first message only)" in caption.value for caption in app.caption)
+    hung_up = [metric.value for metric in app.metric if metric.label == "Immediate callers who hung up"]
+    assert len(hung_up) == 2 and all(" of " in value for value in hung_up)  # assumed and measured Claude rows
+
+
+def test_without_an_evaluation_the_simulator_says_so_and_replays_assumed_rates(desk):
+    app = run_app()
+    app.sidebar.radio[0].set_value("Scenario simulator").run()
+    assert any("Measured error rates are not available" in warning.value for warning in app.warning)
+    app.button(key="run_replay").click().run()
+    assert set(replay_table(app)["policy"]) == {"FIFO", "Keyword rules · assumed rates", "Claude · assumed rates (sliders)"}

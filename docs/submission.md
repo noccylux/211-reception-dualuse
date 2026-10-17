@@ -23,10 +23,10 @@ Required by the rules. Add each tool when it is first used.
 
 | Tool | Used for |
 |---|---|
-| Claude Code | Coding assistant for the repository: code review, the playbook agent, line profiles, surge injector, tests and docs |
+| Claude Code | Coding assistant for the repository: code review, the playbook agent, line profiles, surge injector, the recorded-message evaluation, tests and docs |
 | OpenAI Codex | Dataset acquisition and integrity checks, the multi-turn reception implementation, tests, repository documentation and Twist 2/3 response drafts |
 | ChatGPT (6 Pro) | Idea evaluation, competitor and dataset research before the build |
-| Claude API (Anthropic SDK, `claude-haiku-5-5`) | The reception agent's replies in the caller's language from playbooks, and structured caller-field extraction; code controls tier rules, emergency referrals and handoff |
+| Claude API (Anthropic SDK, `claude-haiku-5-5`) | The reception agent's replies in the caller's language from playbooks, and structured caller-field extraction; code controls tier rules, emergency referrals and handoff. The same calls ran on recorded disaster messages for the evaluation ([evaluation.md](evaluation.md)) |
 | Retell AI | Phone numbers, speech-to-text and text-to-speech for voice callers; the desk's own logic produces every reply (branch `voice-retell-bridge`) |
 
 ## Pitch outline (5 minutes)

@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
 from dualuse.config import ROOT
-from dualuse import extract
+from dualuse import evaluation, extract
 from dualuse.holdqueue import Conflict, HeldCall, HoldQueue
 from dualuse.live_surge import arrival_offsets, plan_surge, start_surge
 from dualuse.profiles import PROFILES
@@ -123,6 +123,7 @@ class SimulateRequest(BaseModel):
     false_alarm_rate: float = Field(ge=0, le=1)
     seed: int
     max_normal_wait_s: float = Field(gt=0)
+    measured_text: Literal["english", "original"] = "english"  # which recorded-message rates to replay
 
 
 def check_mode(mode: str):
@@ -299,8 +300,11 @@ def simulate(body: SimulateRequest) -> dict:
         false_alarm_rate=body.false_alarm_rate,
         seed=body.seed,
     )
+    saved = saved_evaluation()
+    measured = saved_rates(saved, body.measured_text) if saved else {}
+    policies = {f"{method}_measured": evaluation.assigned_mix(rates) for method, rates in measured.items()}
     try:
-        results = three_policy_comparison(spec, body.max_normal_wait_s)
+        results = three_policy_comparison(spec, body.max_normal_wait_s, policies)
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
     return {
@@ -309,7 +313,34 @@ def simulate(body: SimulateRequest) -> dict:
         "after-action report. Not real calls.",
         "spec": body.model_dump(),
         "results": results,
+        "measured": {"text": body.measured_text, "label": saved["label"], "generated_at": saved["generated_at"],
+                     "rates": measured} if measured else None,
     }
+
+
+def saved_evaluation() -> dict | None:
+    try:
+        return evaluation.load_results()
+    except ValueError as error:  # includes invalid JSON
+        raise HTTPException(500, f"{evaluation.RESULTS} is malformed: {error}") from error
+
+
+def saved_rates(saved: dict, text: str) -> dict:
+    try:
+        return evaluation.measured_rates(saved, text)
+    except (KeyError, TypeError, ValueError) as error:
+        raise HTTPException(500, f"{evaluation.RESULTS} lacks measured rates for {text}: {error!r}") from error
+
+
+@app.get("/evaluation")
+def get_evaluation() -> dict:
+    """Recorded-message evaluation summaries (proxy labels, first message only), without per-message rows."""
+    saved = saved_evaluation()
+    if saved is None:
+        return {"available": False}
+    mixes = {text: {method: rates["assigned_mix"] for method, rates in saved_rates(saved, text).items()}
+             for text in evaluation.TEXTS}
+    return {"available": True, **{key: value for key, value in saved.items() if key != "rows"}, "assigned_mix": mixes}
 
 
 @app.get("/samples")

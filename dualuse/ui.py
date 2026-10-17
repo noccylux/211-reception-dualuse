@@ -9,8 +9,15 @@ import streamlit as st
 
 API_URL = os.environ.get("DUALUSE_API_URL", "http://localhost:8000")
 TIER_ICON = {"immediate": "🔴", "priority": "🟠", "unknown": "⚪", "normal": "🟢"}
-POLICY_TEXT = {"fifo": "FIFO", "rules": "Assumed keyword accuracy", "model": "Assumed model accuracy"}
-POLICY_COLOR = {"fifo": "#2a78d6", "rules": "#eb6834", "model": "#1baf7a"}
+POLICY_TEXT = {"fifo": "FIFO", "rules": "Keyword rules · assumed rates", "rules_measured": "Keyword rules · measured tiers",
+               "model": "Claude · assumed rates (sliders)", "model_measured": "Claude · measured tiers"}
+# Hue names the method; hatching marks assumed error rates, solid bars measured ones.
+POLICY_COLOR = {"fifo": "#2a78d6", "rules": "#eb6834", "rules_measured": "#eb6834", "model": "#1baf7a", "model_measured": "#1baf7a"}
+ASSUMED = ("rules", "model")
+METHOD_NAMES = {"fifo": "FIFO (reference)", "rules": "Offline keyword rules", "model": "Claude model mode"}
+TEXT_NAMES = {"english": "English translation", "original": "Original text"}
+# Which recorded messages stand in for each true tier of a simulated caller (dualuse.evaluation.PROXY_FOR).
+PROXY_NAMES = {"immediate": "rescue, medical or death subset", "priority": "needs-a-person sample", "normal": "routine sample"}
 TRUE_TIERS = ["immediate", "priority", "normal"]
 st.set_page_config(page_title="211 Reception", layout="wide")
 
@@ -44,6 +51,65 @@ def fmt_wait(seconds):
 
 def minutes(seconds):
     return None if seconds is None else round(seconds / 60, 1)
+
+
+def interval(p, by_construction=False):
+    if p is None:
+        return "n/a"
+    if by_construction:
+        return f"{p['rate']:.0%} by construction"
+    return f"{p['rate']:.1%} ({p['low']:.1%}–{p['high']:.1%})"
+
+
+def measured_table(saved):
+    """One row per method and text column, from the recorded-message evaluation."""
+    rows = []
+    for method, name in METHOD_NAMES.items():
+        for text, text_name in TEXT_NAMES.items():
+            m = saved["summaries"][method][text]
+            fixed = m.get("by_construction", False)
+            subset_n = m["subset_miss"]["n"] if m["subset_miss"] else 0
+            rows.append({
+                "method": name, "text": text_name,
+                "miss: needs a person → NORMAL": interval(m["miss"], fixed),
+                "false alarm: routine → IMMEDIATE or PRIORITY": interval(m["false_alarm"], fixed),
+                "routine ranked ahead, UNKNOWN included": interval(m["routine_ahead"], fixed),
+                "rescue, medical or death → NORMAL": interval(m["subset_miss"], fixed),
+                "review flag (needs / routine)": "n/a" if fixed else f"{m['review']['needs']['rate']:.0%} / {m['review']['routine']['rate']:.0%}",
+                "failed turns": "n/a" if fixed else str(m["failed"]),
+                "n (needs / routine / subset)": f"{m['miss']['n']} / {m['false_alarm']['n']} / {subset_n}",
+            })
+    return pd.DataFrame(rows)
+
+
+def mix_table(saved, text):
+    """The assigned-tier shares the measured policies replay, per method and simulated true tier."""
+    rows = []
+    for method in ("rules", "model"):
+        for true_tier, proxy in PROXY_NAMES.items():
+            shares = saved["assigned_mix"][text][method][true_tier]
+            rows.append({"method": METHOD_NAMES[method], "simulated true tier": true_tier, "tiers measured on": proxy,
+                         **{tier.upper(): f"{shares[tier]:.0%}" for tier in ("immediate", "priority", "unknown", "normal")}})
+    return pd.DataFrame(rows)
+
+
+def policy_gains(title, results, policy, keyword_policy):
+    """One tiered policy against FIFO: waits of served callers and, because waits alone hide callers who
+    gave up, immediate callers who hung up; misses against the keyword policy with the same rate source."""
+    st.caption(title)
+    cols = st.columns(4)
+    fifo, ours = results["fifo"]["by_true_tier"], results[policy]["by_true_tier"]
+    for col, tier, label in ((cols[0], "immediate", "Immediate tier, P95 wait"), (cols[2], "normal", "Normal tier, P95 wait (the cost)")):
+        wait, baseline = ours[tier]["wait_p95"], fifo[tier]["wait_p95"]
+        change = minutes(wait - baseline) if None not in (wait, baseline) else None
+        col.metric(label, f"{minutes(wait)} min" if wait is not None else "n/a",
+                   delta=f"{change} min vs FIFO" if change else None, delta_color="inverse")  # no arrow for no change
+    hung_up = ours["immediate"]["abandoned"]
+    change = hung_up - fifo["immediate"]["abandoned"]
+    cols[1].metric("Immediate callers who hung up", f"{hung_up} of {ours['immediate']['calls']}",
+                   delta=f"{change} vs FIFO" if change else None, delta_color="inverse")
+    cols[3].metric("Urgent calls ranked normal (misses)", results[policy]["misses"],
+                   delta=f"keyword rules: {results[keyword_policy]['misses']}", delta_color="off")
 
 
 def origin_label(call):
@@ -170,8 +236,8 @@ def operator_panel():
     metrics[2].metric("Needs review", sum(bool(c["attention"]) for c in state["calls"] if c["status"] == "waiting"))
     metrics[3].metric("Callback tasks", sum(c["callback_status"] == "pending_review" for c in state["calls"]))
     with st.expander("Demo surge: inject callers (simulated arrivals)"):
-        st.caption("Scripts are team-written callers (simulated). Messages are real disaster SMS from the Munro "
-                   "dataset (Haiti 2010, Sandy, Pakistan floods; English translation) used as first messages, not "
+        st.caption("Scripts are team-written callers (simulated). Messages are recorded disaster messages from the "
+                   "Munro dataset (2010 Haiti and Pakistan SMS, Hurricane Sandy posts; English translation) used as first messages, not "
                    "211 calls. The Austin pattern time-compresses real APD 911 dispatch timestamps.")
         cols = st.columns(4)
         count = cols[0].number_input("Callers", 1, 60, 20, key="surge_count")
@@ -298,11 +364,29 @@ elif view == "Incident map":
     st.components.v1.iframe(f"{API_URL}/plugins/map/?line={status['profile']}", height=1500, scrolling=True)
 elif view == "Scenario simulator":
     st.markdown(
-        "**Simulated.** A synthetic surge from the parameters below, replayed under three queue policies with the "
+        "**Simulated.** A synthetic surge from the parameters below, replayed under several queue policies with the "
         "same arrivals, operators, service times and caller patience. Defaults are informed by 211 LA's "
         "January 2025 after-action report (2025-01-08: 7,815 contacts, 60.66% abandoned, 1 h 23 min average "
-        "wait, 6 min 16 s handle time); the arrival process, tier mix, patience and error rates are assumptions."
+        "wait, 6 min 16 s handle time); the arrival process, tier mix, patience and assumed error rates are "
+        "assumptions. Measured error rates come from recorded messages, below."
     )
+    saved = call_api("GET", "/evaluation")
+    measured_text = "english"
+    with st.container(border=True):
+        if saved["available"]:
+            st.markdown("**Measured error rates · recorded messages, proxy labels**")
+            st.caption(f"{saved['label']}. Scored against the dataset's category labels as proxies (request = needs a "
+                       "person), one message per caller, through the desk's own offline and Claude paths. These are not "
+                       "211 calls, so the rates are not 211 accuracy. 95% Wilson intervals in parentheses. Run: "
+                       f"{saved['generated_at']}; method and limits in docs/evaluation.md.")
+            st.dataframe(measured_table(saved), hide_index=True, use_container_width=True)
+            measured_text = st.radio("Replay the measured tiers from", list(TEXT_NAMES), format_func=TEXT_NAMES.get,
+                                     horizontal=True, key="measured_text")
+            with st.expander("Tier shares the measured policies replay"):
+                st.dataframe(mix_table(saved, measured_text), hide_index=True, use_container_width=True)
+        else:
+            st.warning("Measured error rates are not available: run scripts/evaluate_messages.py (docs/evaluation.md), "
+                       "which writes data/processed/eval_messages.json. The replay uses assumed rates only.")
     left, middle, right = st.columns(3)
     duration_h = left.number_input("Surge length (hours)", 0.5, 12.0, 2.0, 0.5)
     arrivals = left.number_input("Calls per hour", 10, 1000, 120, 10)
@@ -312,14 +396,17 @@ elif view == "Scenario simulator":
     decision_s = middle.number_input("Interview + extraction delay (s)", 0, 600, 45, 5)
     immediate_share = right.slider("True share: immediate", 0.0, 0.5, 0.03, 0.01)
     priority_share = right.slider("True share: priority", 0.0, 0.9, 0.22, 0.01)
-    miss_rate = right.slider("Model miss rate (urgent ranked normal)", 0.0, 0.5, 0.05, 0.01)
-    false_alarm = right.slider("Model false-alarm rate (normal ranked priority)", 0.0, 0.5, 0.10, 0.01)
+    miss_rate = right.slider("Assumed Claude miss rate (urgent ranked normal)", 0.0, 0.5, 0.05, 0.01)
+    false_alarm = right.slider("Assumed Claude false-alarm rate (routine ranked with priority)", 0.0, 0.5, 0.10, 0.01)
     aging_min = right.number_input("Aging guard: promote normal after (min)", 5, 180, 30, 5)
     seed = right.number_input("Seed", 0, 10_000, 7)
     normal_share = round(1 - immediate_share - priority_share, 4)
-    st.caption(f"True share: normal = {normal_share:.2f}. The keyword-rules policy assumes a 25% miss rate and 30% false alarms.")
+    st.caption(f"True share: normal = {normal_share:.2f}. The assumed keyword-rules policy uses a 25% miss rate and 30% "
+               "false alarms. Measured policies give each simulated caller a tier drawn from the tiers the desk gave "
+               "recorded messages: a true IMMEDIATE caller from the rescue, medical or death subset, PRIORITY from the "
+               "needs-a-person sample, NORMAL from the routine sample. UNKNOWN shares PRIORITY's queue rank.")
 
-    if st.button("Run the replay", type="primary"):
+    if st.button("Run the replay", type="primary", key="run_replay"):
         body = {
             "duration_s": duration_h * 3600,
             "arrivals_per_hour": arrivals,
@@ -332,6 +419,7 @@ elif view == "Scenario simulator":
             "false_alarm_rate": false_alarm,
             "seed": int(seed),
             "max_normal_wait_s": aging_min * 60,
+            "measured_text": measured_text,
         }
         try:
             st.session_state["replay"] = api("POST", "/simulate", json=body)
@@ -341,10 +429,11 @@ elif view == "Scenario simulator":
     result = st.session_state.get("replay")
     if result:
         results = result["results"]
+        policies = [policy for policy in POLICY_TEXT if policy in results]
         rows = []
-        for policy, summary in results.items():
+        for policy in policies:
             for tier in TRUE_TIERS:
-                stats = summary["by_true_tier"][tier]
+                stats = results[policy]["by_true_tier"][tier]
                 rows.append(
                     {
                         "policy": POLICY_TEXT[policy],
@@ -360,12 +449,14 @@ elif view == "Scenario simulator":
         table = pd.DataFrame(rows)
 
         fig = go.Figure()
-        for policy, summary in results.items():
+        for policy in policies:
             fig.add_bar(
                 name=POLICY_TEXT[policy],
                 x=TRUE_TIERS,
-                y=[minutes(summary["by_true_tier"][tier]["wait_p95"]) for tier in TRUE_TIERS],
+                y=[minutes(results[policy]["by_true_tier"][tier]["wait_p95"]) for tier in TRUE_TIERS],
                 marker_color=POLICY_COLOR[policy],
+                marker_pattern_shape="/" if policy in ASSUMED else "",
+                marker_pattern_fgcolor="#fcfcfb",
                 marker_line_width=0,
                 hovertemplate="%{x}: P95 wait %{y} min<extra>" + POLICY_TEXT[policy] + "</extra>",
             )
@@ -373,7 +464,7 @@ elif view == "Scenario simulator":
             barmode="group",
             bargap=0.3,
             bargroupgap=0.08,
-            title="P95 wait for a human, by true tier (minutes, simulated)",
+            title="P95 wait for a human, by true tier (minutes, simulated surge)",
             yaxis_title="minutes",
             xaxis_title="true tier",
             legend_title="queue policy",
@@ -383,37 +474,22 @@ elif view == "Scenario simulator":
         )
         fig.update_yaxes(gridcolor="#e1e0d9", zerolinecolor="#c3c2b7")
         st.plotly_chart(fig, use_container_width=True)
+        measured = result["measured"]
+        st.caption("Hatched bars use assumed error rates. " + (
+            f"Solid bars draw tiers measured on recorded disaster messages with proxy labels ({TEXT_NAMES[measured['text']]}, "
+            "first message only); the surge itself is simulated." if measured else "No measured tiers were available for this replay."))
+        st.caption("One replay is one random draw. At a 3% immediate share a two-hour run has only a handful of immediate "
+                   "callers, so their waits swing between seeds, and a P95 wait covers only callers who did not hang up.")
 
-        gains = st.columns(3)
-        fifo_imm = results["fifo"]["by_true_tier"]["immediate"]["wait_p95"]
-        model_imm = results["model"]["by_true_tier"]["immediate"]["wait_p95"]
-        fifo_norm = results["fifo"]["by_true_tier"]["normal"]["wait_p95"]
-        model_norm = results["model"]["by_true_tier"]["normal"]["wait_p95"]
-        gains[0].metric(
-            "Immediate tier, P95 wait",
-            f"{minutes(model_imm)} min" if model_imm is not None else "n/a",
-            delta=(f"{minutes(model_imm - fifo_imm)} min vs FIFO" if None not in (model_imm, fifo_imm) else None),
-            delta_color="inverse",
-        )
-        gains[1].metric(
-            "Normal tier, P95 wait (the cost)",
-            f"{minutes(model_norm)} min" if model_norm is not None else "n/a",
-            delta=(f"{minutes(model_norm - fifo_norm)} min vs FIFO" if None not in (model_norm, fifo_norm) else None),
-            delta_color="inverse",
-        )
-        gains[2].metric(
-            "Urgent calls ranked normal (misses)",
-            results["model"]["misses"],
-            delta=f"rules: {results['rules']['misses']}",
-            delta_color="off",
-        )
+        policy_gains("Claude at the assumed rates (sliders):", results, "model", "rules")
+        if measured:
+            policy_gains("Claude with tiers measured on recorded disaster messages (proxy labels, not 211 accuracy):",
+                         results, "model_measured", "rules_measured")
         st.dataframe(table, hide_index=True, use_container_width=True)
-        shares = pd.DataFrame(
-            {POLICY_TEXT[policy]: summary["assigned_share"] for policy, summary in results.items()}
-        ).T
+        shares = pd.DataFrame({POLICY_TEXT[policy]: results[policy]["assigned_share"] for policy in policies}).T
         st.caption("Share of calls in each assigned tier (the policy's view), and totals served / abandoned:")
-        shares["served"] = [summary["served"] for summary in results.values()]
-        shares["abandoned"] = [summary["abandoned"] for summary in results.values()]
+        shares["served"] = [results[policy]["served"] for policy in policies]
+        shares["abandoned"] = [results[policy]["abandoned"] for policy in policies]
         st.dataframe(shares, use_container_width=True)
         st.caption(result["note"])
 
@@ -430,9 +506,11 @@ A phone caller's voice is never transferred to a person: on handoff the caller h
 There is no medical advice workflow, dispatch, or automated callback.
 The operator confirms handoff using the demo controls. Treat the desk as a local, single-process demo.
 
-The scenario simulator uses synthetic calls and **assumed** classifier error rates. It does not
-run Claude or measure real-world waiting times. No model has been trained or evaluated on the
-downloaded datasets in this version. Real-data evaluation is a separate next step.
+The scenario simulator uses synthetic calls. Its error rates are either **assumed** (the sliders and
+the keyword-rules default) or **measured** on recorded 2010 Haiti and Pakistan SMS and Hurricane Sandy
+posts, first message only, against the dataset's category labels as proxies (docs/evaluation.md). Those messages are not 211
+calls, so the measured rates are not 211 accuracy. The simulator does not run Claude or measure
+real-world waiting times. No model has been trained on the downloaded datasets.
 """)
     for invariant in initial["invariants"]:
         st.write("• " + invariant)

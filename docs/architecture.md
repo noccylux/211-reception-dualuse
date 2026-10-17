@@ -52,7 +52,8 @@ Retell voice bridge ([voice.md](voice.md)), labeled origin `phone`. Design and h
 | `dualuse/storage.py` | SQLite snapshot of the desk. |
 | `dualuse/api.py` | Validated HTTP boundary; one persistent desk per process. |
 | `dualuse/ui.py` | Caller conversation, operator desk, incident reports, scenario simulator, about page. Panels refresh every 2 s. |
-| `dualuse/triage.py`, `simulation.py`, `surge.py` | Queue policies and the offline three-policy simulation. |
+| `dualuse/triage.py`, `simulation.py`, `surge.py` | Queue policies and the offline policy simulation, with assumed error rates or measured tier shares. |
+| `dualuse/evaluation.py`, `scripts/evaluate_messages.py` | First-turn evaluation on recorded disaster messages with proxy labels: each sampled message through a fresh desk in offline and Claude modes; Wilson intervals; measured tier shares for the simulator ([evaluation.md](evaluation.md)). |
 | `dualuse/voice_bridge.py` | Separate process connecting Retell phone calls to the desk through the REST API only; see [voice.md](voice.md). |
 | `dualuse/mapview.py` | Copies the active line's calls (caller words, stated location or test-data coordinates, tier and scorer band as display labels) into the map plugin once a second, with a new revision only when content changes. In memory; rebuilt after a restart and replaced on reset or profile switch. |
 | `crisisfusion_map/` | Vendored CrisisFusion map plugin 1.0.0, mounted at `/plugins/map/` and shown in the UI's "Incident map" workspace. The service area comes from the line profile (`MapArea` in `profiles.py`): LA County with Census geocoding and NWS + USGS, or Shanghai as an example city (OSM boundary) with Nominatim geocoding and USGS. World-wide base map with a "Show all calls" control; calls can come from anywhere, and those located outside the area are dashed grey and flagged for transfer. Lookups and feeds run only on button press. It never changes a tier. See its [README](../crisisfusion_map/README.md). |
@@ -68,7 +69,9 @@ Retell voice bridge ([voice.md](voice.md)), labeled origin `phone`. Design and h
    assistant (everything said to the caller) turns, and the facts as a final
    system message.
 3. Quotes and the location are checked against the caller's words after
-   normalizing case, quotes and whitespace. Unverified quotes or locations are
+   normalizing case, quotes, whitespace and accents on Latin letters (callers
+   often type `leogane` where Claude writes `Léogâne`); a respelled word still
+   fails. Unverified quotes or locations are
    dropped and flagged for review; a life threat without a verified quote stays
    IMMEDIATE with a flag. An empty or oversized reply becomes a fixed question
    in the caller's language.
@@ -117,6 +120,12 @@ tier, profile, language, reservations, handoffs and audit events.
 | Unknown: not enough information yet | 1 |
 | Normal: routine request | 2 |
 
+Claude fills the fields that decide the tier; [core.md](../dualuse/playbooks/core.md)
+and the schema descriptions in `dualuse/extract.py` define them. Needing a
+person soon includes the caller or people with them lacking shelter tonight,
+food or drinking water today, medication or oxygen, or care for an injured or
+sick person; a question about where or how to get help is routine.
+
 FIFO applies within a rank. A normal caller waiting 30 minutes is scheduled at
 rank 1 without changing the stored tier; this is not a maximum wait guarantee.
 Reports are grouped by incident kind and normalized stated location, as an
@@ -129,9 +138,11 @@ unverified candidate association that never lowers anyone's priority.
 | Typed messages in the caller view | live | The demo conversation |
 | `dualuse/surge_scripts.py` | simulated, team-written | Surge callers in English, Spanish and Mandarin |
 | Munro disaster response messages, test split, English translation ([datasets](datasets.md)) | recorded, CC BY 4.0 | First messages of surge callers, labeled per call; not 211 calls |
+| Munro test split, direct messages, English translation and original text, with the dataset's categories as proxy labels | recorded, CC BY 4.0 | First-turn evaluation of the offline and Claude tiers ([evaluation.md](evaluation.md)); not 211 calls, so not 211 accuracy |
+| Munro validation split, same filter and labels | recorded, CC BY 4.0 | Checking desk changes before the test split runs (`--split validation`) |
 | Austin APD 911 Calls for Service, busiest day 2026-06-06 | recorded | Time-compressed surge arrival pattern; police dispatch, not 211 |
 | 211 LA January 2025 after-action report, Appendix D | recorded, daily aggregates | Crisis figures above; scenario simulator defaults |
-| Scenario simulator | simulated, assumed error rates | Offline policy comparison; it does not call Claude |
+| Scenario simulator | simulated calls; assumed error rates, plus tier shares measured in the evaluation when `data/processed/eval_messages.json` exists | Offline policy comparison; it does not call Claude |
 | `POST /calls` with `origin: replay` and `location` | replayed test data, labeled synthetic | Calls with coordinates that land on the map directly |
 | LA County GIS boundary; OpenStreetMap Shanghai boundary (relation 913067, ODbL) | recorded, sha256 in `crisisfusion_map/data/geo_sources.json` | Service area per line profile; the OSM outline is not an official boundary |
 
@@ -139,11 +150,14 @@ unverified candidate association that never lowers anyone's priority.
 
 ## Failure behavior and limits
 
-- Model mode: 20 s timeout, no retries. A failed turn keeps the message, shows
+- Model mode: 20 s timeout, no retries, up to 4,000 output tokens because
+  hidden thinking counts against the limit. A failed turn keeps the message, shows
   an error, flags the call and makes a non-immediate call UNKNOWN.
 - Each message is at most 4,000 characters, 32,000 per conversation. Caller
   text is escaped before display. No authentication: run on localhost only.
-- Not measured: extraction accuracy on real data, latency under load, Mandarin
-  and Spanish quality beyond the smoke checks in record 009.
+- Tier accuracy is measured only on recorded disaster messages with proxy labels, first
+  message only ([evaluation.md](evaluation.md)), not on 211 calls or whole
+  conversations. Not measured: latency under load, Mandarin
+  and Spanish quality beyond the smoke checks in records 009 and 016.
 
 Startup and the demo path: [README](../README.md).

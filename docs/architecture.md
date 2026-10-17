@@ -1,7 +1,8 @@
 # Architecture: 211 reception desk
 
-Current behavior of the text reception demo on `worktree-comms-211-demo`,
-updated Sat 2026-10-17 11:00 PT. A local prototype, not a telephone switch
+Current behavior on the staging branch `codex/demo-integration-20261017`,
+integrated Sat 2026-10-17; promotion to `main` awaits the campus demo finishing.
+A local prototype, not a telephone switch
 or emergency dispatch system; English phone calls reach it only through the
 Retell voice bridge ([voice.md](voice.md)), labeled origin `phone`. Design and history: change records
 [008](changes/2026-10-17-008-reception-agent.md) and
@@ -20,9 +21,10 @@ Retell voice bridge ([voice.md](voice.md)), labeled origin `phone`. Design and h
   in a conversation, moves life threats ahead, sends people in danger to the
   emergency number and hands off with context.
 - Global (Twist 2): a line profile switches language, emergency numbers and
-  address conventions with the same queue rules. Built: Los Angeles 211 and a
-  China 12345 citizen service hotline (110, 119, 120). The 12345 facts are to be
-  verified before the pitch.
+  address conventions with the same queue rules. Built: Los Angeles 211 and
+  China's 12345 government service hotline (110, 119, 120). The 12345 facts were
+  checked Sat 2026-10-17 ([twists.md](problem/twists.md#twist-2)); 122 (traffic
+  accidents) is not in the profile, and the operator summary stays English.
 - Defense end user (Twist 1): an installation emergency communications line
   would be a third profile. Planned, not built.
 
@@ -51,7 +53,7 @@ Retell voice bridge ([voice.md](voice.md)), labeled origin `phone`. Design and h
 | `dualuse/live_surge.py`, `surge_scripts.py` | Labeled batch of callers injected into the live desk. |
 | `dualuse/storage.py` | SQLite snapshot of the desk. |
 | `dualuse/api.py` | Validated HTTP boundary; one persistent desk per process. |
-| `dualuse/ui.py` | Caller conversation, operator desk, incident reports, scenario simulator, about page. Panels refresh every 2 s. |
+| `dualuse/ui.py` | Caller conversation, operator desk, incident reports, incident map, scenario simulator, about page. Panels refresh every 2 s. |
 | `dualuse/triage.py`, `simulation.py`, `surge.py` | Queue policies and the offline policy simulation, with assumed error rates or measured tier shares. |
 | `dualuse/evaluation.py`, `scripts/evaluate_messages.py` | First-turn evaluation on recorded disaster messages with proxy labels: each sampled message through a fresh desk in offline and Claude modes; Wilson intervals; measured tier shares for the simulator ([evaluation.md](evaluation.md)). |
 | `dualuse/voice_bridge.py` | Separate process connecting Retell phone calls to the desk through the REST API only; see [voice.md](voice.md). |
@@ -146,7 +148,7 @@ unverified candidate association that never lowers anyone's priority.
 | `POST /calls` with `origin: replay` and `location` | replayed test data, labeled synthetic | Calls with coordinates that land on the map directly |
 | LA County GIS boundary; OpenStreetMap Shanghai boundary (relation 913067, ODbL) | recorded, sha256 in `crisisfusion_map/data/geo_sources.json` | Service area per line profile; the OSM outline is not an official boundary |
 
-`docs/datasets.md` lives in the main checkout until this branch merges.
+Dataset setup is documented in [datasets.md](datasets.md).
 
 ## Failure behavior and limits
 

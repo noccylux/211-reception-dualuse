@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>211 Reception poster</title>
+<!-- Twist 3 poster, 24 x 36 in portrait. Sources and export command: docs/submission.md#poster. -->
+<style>
+@page { size: 24in 36in; margin: 0; }
+:root {
+  --ink: #14213d;
+  --muted: #4a5568;
+  --line: #d5dbe5;
+  --tint: #f2f4f8;
+  --claude: #6247aa;
+  --code: #1d5fa8;
+  --person: #0f7a5c;
+  --caller: #5b6474;
+  --immediate: #d62839;
+  --priority: #ee8a1f;
+  --unknown: #8a94a6;
+  --normal: #2e9e5b;
+  --sim: #9a5b00;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 2304px; height: 3456px; background: #fff; }
+body {
+  font-family: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  color: var(--ink);
+  font-size: 31px;
+  line-height: 1.3;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.page { width: 2304px; height: 3456px; display: flex; flex-direction: column; overflow: hidden; }
+
+header { background: var(--ink); color: #fff; padding: 44px 88px 40px; }
+.kicker { font-size: 28px; letter-spacing: .12em; text-transform: uppercase; color: #c9d3e6; }
+h1 { font-size: 108px; line-height: 1.02; font-weight: 700; letter-spacing: -.01em; margin: 14px 0 18px; }
+.sub { font-size: 37px; line-height: 1.3; color: #eef2f8; max-width: 2130px; }
+.sub b { color: #fff; }
+
+main { flex: 1; padding: 30px 88px 0; display: flex; flex-direction: column; gap: 26px; }
+h2 { font-size: 46px; line-height: 1.1; font-weight: 700; margin-bottom: 10px; }
+h2 .tag { font-size: 28px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-left: 14px; }
+h3 { font-size: 35px; line-height: 1.15; margin-bottom: 10px; }
+.note { font-size: 25px; line-height: 1.3; color: var(--muted); }
+
+.problem { display: grid; grid-template-columns: 1.5fr 1fr; gap: 30px; }
+.card { background: var(--tint); border-radius: 22px; padding: 26px 34px; }
+.stats { display: flex; gap: 56px; margin: 4px 0 12px; }
+.stat b { display: block; font-size: 80px; line-height: 1; font-weight: 700; color: var(--immediate); }
+.stat span { font-size: 28px; color: var(--muted); }
+.question { background: var(--ink); color: #fff; display: flex; flex-direction: column; justify-content: center; }
+.question p { font-size: 34px; line-height: 1.28; }
+.question .big { font-size: 56px; line-height: 1.1; font-weight: 700; margin: 8px 0 10px; }
+
+.flow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 46px; }
+.step { position: relative; border-radius: 20px; padding: 20px 24px 22px; background: #fff; border: 4px solid var(--c); }
+.step:not(:last-child)::after {
+  content: ""; position: absolute; right: -40px; top: 50%; transform: translateY(-50%);
+  border-left: 30px solid var(--ink); border-top: 20px solid transparent; border-bottom: 20px solid transparent;
+}
+.who { display: inline-block; font-size: 24px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #fff; background: var(--c); border-radius: 10px; padding: 2px 14px; margin-bottom: 10px; }
+.step h3 { font-size: 36px; margin-bottom: 8px; }
+.step p { font-size: 27px; line-height: 1.28; color: #2d3748; }
+.tiers { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 34px; margin-top: 16px; font-size: 27px; }
+.dot { display: inline-block; width: 26px; height: 26px; border-radius: 50%; vertical-align: -3px; margin-right: 10px; background: var(--t); }
+.tiers .unknown .dot { background: #fff; border: 4px solid var(--unknown); }
+
+.demo { display: grid; grid-template-columns: 1fr 1fr; gap: 24px 34px; align-items: start; }
+figure { display: flex; flex-direction: column; }
+.shot { border: 3px solid var(--line); border-radius: 14px; overflow: hidden; background: #fff; }
+.shot img { display: block; width: 100%; height: auto; }
+figcaption { font-size: 26px; line-height: 1.3; color: #2d3748; margin-top: 10px; }
+figcaption b { color: var(--ink); }
+.label { display: inline-block; font-size: 21px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; border-radius: 8px; padding: 1px 10px; margin-right: 8px; color: #fff; background: var(--sim); vertical-align: 3px; }
+
+.lives { display: grid; grid-template-columns: 1fr 1.15fr; gap: 30px; }
+.lives p { font-size: 28px; line-height: 1.3; }
+table { width: 100%; border-collapse: collapse; font-size: 26px; line-height: 1.22; margin-bottom: 10px; }
+th, td { text-align: left; vertical-align: top; padding: 6px 10px; border-bottom: 2px solid var(--line); }
+th { font-size: 23px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+td:first-child { font-weight: 600; white-space: nowrap; }
+.same { color: var(--person); font-weight: 700; }
+
+.bottom { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 30px; }
+ul { list-style: none; }
+li { position: relative; padding-left: 30px; margin-bottom: 4px; font-size: 27px; line-height: 1.28; }
+li::before { content: ""; position: absolute; left: 4px; top: 13px; width: 12px; height: 12px; border-radius: 50%; background: var(--ink); }
+.never li::before { background: var(--immediate); }
+.runs li::before { background: var(--normal); }
+.notyet li::before { background: var(--unknown); }
+
+footer { margin-top: auto; padding: 20px 88px 28px; border-top: 3px solid var(--line); font-size: 23px; line-height: 1.35; color: var(--muted); display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+footer b { color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="page">
+<header>
+  <div class="kicker">The Dual-Use Hackathon · InnovateLA × USC Viterbi · Track 03 Resilience Comms (Retell AI)</div>
+  <h1>Turn hold time into context<br>for the next operator</h1>
+  <p class="sub"><b>211 Reception</b> is an AI desk for the hold queue of a community and disaster line. While callers
+    wait, Claude talks with them in their language; code, not the model, decides who needs a person first; the
+    operator who picks up gets a summary.</p>
+</header>
+
+<main>
+  <section class="problem">
+    <div class="card">
+      <h2>When the fires hit Los Angeles</h2>
+      <div class="stats">
+        <div class="stat"><b>7,815</b><span>contacts offered</span></div>
+        <div class="stat"><b>60.66%</b><span>abandoned</span></div>
+        <div class="stat"><b>1 h 23 min</b><span>average wait</span></div>
+      </div>
+      <p class="note">211 LA, all contacts, 8 Jan 2025 (Eaton and Palisades fires). 211 LA after-action report, App. D.</p>
+    </div>
+    <div class="card question">
+      <p>A first-come queue cannot tell a trapped person from a benefits question. The supervisor asks:</p>
+      <p class="big">Who needs a person<br>right now?</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>How it works <span class="tag">running prototype</span></h2>
+    <div class="flow">
+      <div class="step" style="--c: var(--caller)"><span class="who">Caller</span>
+        <h3>Waits in line</h3>
+        <p>Typed chat, or an English phone call via Retell. Never hung up on.</p></div>
+      <div class="step" style="--c: var(--claude)"><span class="who">Claude</span>
+        <h3>Talks with them</h3>
+        <p>Editable playbooks: acknowledge, calm, ask one question, in their language.</p></div>
+      <div class="step" style="--c: var(--claude)"><span class="who">Claude + code</span>
+        <h3>Notes the need</h3>
+        <p>Situation, place, danger, with the caller's words as evidence that code checks.</p></div>
+      <div class="step" style="--c: var(--code)"><span class="who">Code</span>
+        <h3>Ranks the queue</h3>
+        <p>Fixed rules set the tier, first come within it. On danger the desk gives the emergency number.</p></div>
+      <div class="step" style="--c: var(--person)"><span class="who">Person</span>
+        <h3>Takes over</h3>
+        <p>Reserve, then confirm. A failed transfer keeps the original arrival time.</p></div>
+    </div>
+    <div class="tiers">
+      <span style="--t: var(--immediate)"><i class="dot"></i><b>Immediate</b> life threat now</span>
+      <span style="--t: var(--priority)"><i class="dot"></i><b>Priority</b> needs a person soon</span>
+      <span class="unknown"><i class="dot"></i><b>Unknown</b> unclear, ranked with Priority</span>
+      <span style="--t: var(--normal)"><i class="dot"></i><b>Normal</b> routine, moves up after 30 min</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>The live demo <span class="tag">screenshots of the running desk, Sat 17 Oct 2026</span></h2>
+    <div class="demo">
+      <figure>
+        <div class="shot"><img src="screens/poster-caller.png" alt="Caller conversation about smoke at 12 Oak Street"></div>
+        <figcaption><span class="label">Team-written scenario</span><b>A crisis call.</b> "I see smoke" makes it
+          Immediate; the desk says call 911 and Claude, live, asks for the address.</figcaption>
+      </figure>
+      <figure>
+        <div class="shot"><img src="screens/poster-handoff.png" alt="Operator handoff card with summary"></div>
+        <figcaption><b>The handoff.</b> Tier, situation, place, the quotes behind the tier and what is still unknown.
+          Only the operator's confirmation completes it.</figcaption>
+      </figure>
+      <figure>
+        <div class="shot"><img src="screens/poster-surge.png" alt="Waiting queue during an injected surge"></div>
+        <figcaption><span class="label">Labeled surge</span><b>20 callers in 60 s:</b> team-written scripts (simulated)
+          and real disaster messages (recorded, not 211 calls). Life threats rise to the top.</figcaption>
+      </figure>
+      <figure>
+        <div class="shot"><img src="screens/poster-cn12345.png" alt="Mandarin conversation on the 12345 line profile"></div>
+        <figcaption><span class="label">Team-written scenario</span><b>Twist 2, China 12345 profile.</b> A flood call in
+          Mandarin: the desk names 110, 119, 120; Claude asks for district, road, compound.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="lives">
+    <div class="card">
+      <h3>Ordinary day</h3>
+      <p>Callers ask about benefits, rent help, food or road status. The assistant notes the need while they hold,
+        nobody loses their place, and the operator starts with a summary.</p>
+      <h3 style="margin-top: 18px">Crisis, same build</h3>
+      <p>In a fire or flood surge, life threats move up and hear the emergency number at once. Matching reports are
+        grouped as unverified; silent callers are flagged; dropped callers become callback review tasks.</p>
+    </div>
+    <div class="card">
+      <h3>Twist 2: China's 12345 hotline</h3>
+      <table>
+        <tr><th></th><th>Los Angeles 211</th><th>China 12345</th></tr>
+        <tr><td>Languages</td><td>English, Spanish, Mandarin</td><td>Mandarin, English</td></tr>
+        <tr><td>In danger</td><td>911</td><td>110 police · 119 fire and rescue · 120 ambulance</td></tr>
+        <tr><td>Address</td><td>number, street, city</td><td>district, road, number, compound, building, unit</td></tr>
+        <tr><td>Rules</td><td colspan="2"><span class="same">Identical code:</span> tiers, order, handoff, human decision</td></tr>
+      </table>
+      <p class="note">12345 is China's local government hotline for non-emergency requests; emergencies go to 110, 119,
+        120 and 122. It surges too: Beijing's 12345 took over 33,000 rain-related calls in 72 hours in July 2023.</p>
+    </div>
+  </section>
+
+  <section class="bottom">
+    <div class="card never">
+      <h3>Never automated</h3>
+      <ul>
+        <li>Hanging up or calling out</li>
+        <li>Dispatch, or promising that help is coming</li>
+        <li>Tier, order or handoff decided by the model</li>
+        <li>Treating an unclear call as routine</li>
+        <li>Completing a transfer without a person</li>
+      </ul>
+    </div>
+    <div class="card runs">
+      <h3>Runs today</h3>
+      <ul>
+        <li>Caller and operator views, saved desk, audit trail</li>
+        <li>Claude replies in English, Spanish, Mandarin</li>
+        <li>Los Angeles 211 and China 12345 line profiles</li>
+        <li>Labeled surge injector</li>
+        <li>Retell bridge for English phone calls</li>
+      </ul>
+    </div>
+    <div class="card notyet">
+      <h3>Not yet, not measured</h3>
+      <ul>
+        <li>Voice transfer to a person; outbound callback</li>
+        <li>Accuracy on real calls; effect on wait times</li>
+        <li>Spanish or Chinese phone calls</li>
+        <li>A 12345 partner, telephony, hosting, data review</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div><b>Launch path (Twist 1):</b> DHS S&amp;T SBIR, with AFWERX SBIR Open Topic and NSF SBIR as alternatives.
+    <b>Built with</b> FastAPI, Streamlit, SQLite, the Claude API (claude-haiku-5-5) and Retell AI.
+    <b>AI tools:</b> Claude Code, OpenAI Codex, ChatGPT.</div>
+  <div><b>Data:</b> conversations shown are team-written test scenarios, not real calls. Surge messages: Munro disaster
+    response messages (CC BY 4.0). Arrival timing: Austin APD 911 calls for service. 12345 facts: State Council
+    guidelines 国办发〔2022〕12号 and 国办函〔2025〕66号; Beijing Daily, 2 Aug 2023.</div>
+</footer>
+</div>
+</body>
+</html>

@@ -43,7 +43,10 @@ danger and what help they need, so the operator can act quickly.
 - `life_threat_now`: someone is in physical danger right now.
   `needs_person_soon`: urgent but not life-threatening (no shelter tonight,
   medication or oxygen running out, a missing person, a dependent left alone).
-  `enough_information`: false until you know what is happening or what they need.
+  `enough_information`: true once you can tell what the caller needs or is
+  reporting, even if details such as the address are still missing; a clear
+  routine question (road status, benefits, where to find water or a shelter)
+  is enough. False only when you cannot yet tell what they need.
 - `incident_kind` only for an actual report, not a question about services;
   `report_only` when the caller reports something they see without asking for
   help for themselves.

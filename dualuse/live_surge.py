@@ -44,8 +44,7 @@ def load_messages(path: Path, count: int, seed: int) -> list[Caller]:
 
 def plan_surge(count: int, source: str, seed: int, messages_path: Path = MESSAGES) -> list[Caller]:
     rng = random.Random(seed)
-    scripts = [Caller(lines, "simulated: team-written script") for lines in SCRIPTS]
-    rng.shuffle(scripts)
+    scripts = [Caller(lines, "simulated: team-written script") for lines in SCRIPTS]  # authored order
     if source == "scripts":
         return [scripts[i % len(scripts)] for i in range(count)]
     if source == "messages":

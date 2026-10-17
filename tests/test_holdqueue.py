@@ -25,6 +25,7 @@ def classification(tier: Tier, location: str | None = "Altadena", situation: str
             evidence=["quoted words"],
             missing=[],
             language="English",
+            incident_kind="fire",
         ),
         tier=tier,
         source="test",

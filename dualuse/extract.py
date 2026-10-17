@@ -7,7 +7,9 @@ docs/architecture.md, sections "Tiers" and "Components".
 """
 
 import os
+import re
 from dataclasses import dataclass
+from typing import Literal
 
 import anthropic
 from pydantic import BaseModel, Field
@@ -33,6 +35,9 @@ class Extraction(BaseModel):
     evidence: list[str] = Field(description="The caller's own words that support the risk judgment, verbatim.")
     missing: list[str] = Field(description="Key facts still unknown that an operator would need.")
     language: str = Field(description="The caller's language, as an English name.")
+    incident_kind: Literal["fire", "medical", "utility", "crime", "other", "none"] = "none"
+    report_only: bool = False
+    safety: Literal["unknown", "danger", "no_immediate_danger"] = "unknown"
 
 
 @dataclass(frozen=True)
@@ -79,7 +84,8 @@ IMMEDIATE_PHRASES = (
     "shooting",
     "stabbed",
     "overdose",
-    "is inside",
+    "calling for help from inside",
+    "shouting for help",
     "suicid",
 )
 PRIORITY_PHRASES = (
@@ -103,7 +109,6 @@ PRIORITY_PHRASES = (
     "no food",
     "running out",
 )
-MIN_WORDS_FOR_A_JUDGMENT = 4
 
 
 def _matches(text: str, phrases: tuple[str, ...]) -> list[str]:
@@ -115,20 +120,34 @@ def classify_with_rules(text: str) -> Classification:
     """Fields from keywords alone: the degraded mode and the comparison baseline."""
     immediate = _matches(text, IMMEDIATE_PHRASES)
     priority = _matches(text, PRIORITY_PHRASES)
-    words = text.split()
-    enough = len(words) >= MIN_WORDS_FOR_A_JUDGMENT or bool(immediate or priority)
+    hazard = any(p in text.lower() for p in ("smoke", "flames", "fire", "power line", "gas leak"))
+    routine = any(p in text.lower() for p in ("freeway", "fema", "calfresh", "benefits", "food pantry", "assistance"))
+    enough = bool(immediate or priority or hazard or routine)
+    place = re.search(r"\b(?:at|on|near|above)\s+((?:\d{1,5}\s+)?(?:[A-Za-z'-]+\s+){1,3}(?:Street|St|Road|Rd|Avenue|Ave|Drive|Lane|Boulevard))\b", text, re.I)
+    location = place.group(1).strip() if place else None
+    if not location:
+        # A short answer to a location question may have no preposition.
+        place = re.search(r"^(?:\d{1,5}\s+)?(?:[A-Za-z'-]+\s+){1,3}(?:Street|St|Road|Rd|Avenue|Ave|Drive|Lane|Boulevard)[.!]?$", text.splitlines()[-1], re.I) if text.strip() else None
+        location = place.group(0).rstrip(".!") if place else None
     missing = [] if enough else ["what is happening", "what the caller needs"]
-    missing.append("where the caller is")
+    if not location:
+        missing.append("where the caller is")
+    safe = any(p in text.lower() for p in ("nobody is hurt", "no one is hurt", "i am safe", "i'm safe", "we are safe"))
+    if not immediate and not safe:
+        missing.append("whether anyone is in immediate danger")
     extraction = Extraction(
         situation=text.strip()[:160] or "(the caller has not said anything yet)",
         need="",
-        location=None,
+        location=location,
         life_threat_now=bool(immediate),
-        needs_person_soon=bool(priority),
+        needs_person_soon=bool(priority or hazard),
         enough_information=enough,
         evidence=immediate + priority,
         missing=missing,
         language="not detected (rules)",
+        incident_kind="fire" if hazard and any(p in text.lower() for p in ("smoke", "flames", "fire")) else "utility" if hazard else "medical" if immediate else "none",
+        report_only=hazard and any(p in text.lower() for p in ("i see", "i saw", "report")) and not immediate,
+        safety="danger" if immediate else "no_immediate_danger" if safe else "unknown",
     )
     return Classification(extraction, fields_to_tier(extraction), "rules")
 

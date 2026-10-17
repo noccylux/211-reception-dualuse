@@ -1,54 +1,61 @@
-"""HTTP service: the hold-queue assistant's backend and the demo UI's data source.
-
-One in-memory queue per process; `POST /reset` clears it. Run:
-bash scripts/uv-run.sh uvicorn dualuse.api:app --reload --host 0.0.0.0 --port 8000
-"""
-
+"""211 reception API. One process per SQLite database; no telephone calls are placed."""
 import math
+import os
+from dataclasses import asdict
+from pathlib import Path
 from typing import Literal
 
-import anthropic
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, field_validator
 
+from dualuse.config import ROOT
 from dualuse import extract
-from dualuse.extract import Classification, Extraction
-from dualuse.holdqueue import HeldCall, HoldQueue
+from dualuse.holdqueue import Conflict, HeldCall, HoldQueue
 from dualuse.samples import SAMPLES
 from dualuse.surge import SurgeSpec, three_policy_comparison
 from dualuse.triage import Tier
 
-MAX_NORMAL_WAIT_S = 1800  # the aging guard
-
+MAX_NORMAL_WAIT_S = 1800
 INVARIANTS = [
-    "The assistant never ends a call; a caller leaves only when served or when they choose to hang up.",
-    "It never tells a caller they are not urgent and never makes the final decision; it orders the hold queue.",
-    "When an operator is free, the head of the queue transfers at once, even mid-sentence.",
-    "Insufficient or conflicting information is ordered as priority, never as normal.",
-    f"A normal-tier caller is promoted after {MAX_NORMAL_WAIT_S // 60} minutes, so reordering delays anyone by a bounded amount.",
-    "It never contacts outside agencies on its own; the supervisor presses that button.",
-    "If the model or the network is unavailable, the queue is plain FIFO, which is today's behavior.",
+    "The assistant never ends a call and never places an outbound call.",
+    "Unknown information is kept with priority, never treated as a routine call.",
+    "Immediate danger stays flagged until human review; every change has an audit event.",
+    "An operator can reserve a call while the model is still replying.",
+    "Only a confirmed handoff completes transfer; a failure preserves the original arrival time.",
+    "Reports are unverified; a shared location is not proof of a shared incident or dispatch.",
+    "Normal callers gain scheduling priority after 30 minutes; this is not a maximum wait guarantee.",
+    "This is a local text demo. Voice, dispatch and automatic callback are not connected.",
 ]
-
 Mode = Literal["model", "rules", "fifo"]
-
-app = FastAPI(title="Hold-queue assistant, 211 demo")
+app = FastAPI(title="211 reception and hold-queue assistant")
 
 
 def default_mode() -> Mode:
     return "model" if extract.model_available() else "rules"
 
 
-QUEUE = HoldQueue(max_normal_wait=MAX_NORMAL_WAIT_S)
-QUEUE.mode = default_mode()
+QUEUE = HoldQueue(MAX_NORMAL_WAIT_S, db_path=Path(os.environ.get("DUALUSE_QUEUE_DB", str(ROOT / ".tmp/211-queue.sqlite3"))), mode=default_mode())
+
+
+@app.exception_handler(Conflict)
+async def conflict_handler(request: Request, error: Conflict):
+    return JSONResponse(status_code=409, content={"detail": str(error)})
 
 
 class NewCall(BaseModel):
-    text: str | None = None
+    text: str | None = Field(default=None, max_length=4000)
 
 
 class Utterance(BaseModel):
-    text: str = Field(min_length=1)
+    text: str = Field(min_length=1, max_length=4000)
+
+    @field_validator("text")
+    @classmethod
+    def nonblank(cls, value):
+        if not value.strip():
+            raise ValueError("utterance cannot be blank")
+        return value.strip()
 
 
 class ModeChange(BaseModel):
@@ -59,113 +66,71 @@ class Reset(BaseModel):
     mode: Mode | None = None
 
 
+class Operator(BaseModel):
+    operator_id: str = Field(default="operator-1", min_length=1, max_length=80, pattern=r"^[\w-]+$")
+
+
+class Confirmation(BaseModel):
+    success: bool
+
+
+class CallbackReview(BaseModel):
+    disposition: Literal["handled_by_operator", "no_callback_needed"]
+
+
 class TierMix(BaseModel):
-    immediate: float
-    priority: float
-    normal: float
+    immediate: float = Field(ge=0, le=1)
+    priority: float = Field(ge=0, le=1)
+    normal: float = Field(ge=0, le=1)
 
 
 class SimulateRequest(BaseModel):
-    duration_s: float
-    arrivals_per_hour: float
-    operators: int = Field(ge=1)
+    duration_s: float = Field(gt=0, le=43200)
+    arrivals_per_hour: float = Field(gt=0, le=1000)
+    operators: int = Field(ge=1, le=100)
     tier_mix: TierMix
-    mean_service_s: float
-    mean_patience_s: float | None = Field(description="null means callers never hang up")
-    decision_delay_s: float
+    mean_service_s: float = Field(gt=0)
+    mean_patience_s: float | None = Field(gt=0, description="null means callers never hang up")
+    decision_delay_s: float = Field(ge=0)
     miss_rate: float = Field(ge=0, le=1)
     false_alarm_rate: float = Field(ge=0, le=1)
     seed: int
     max_normal_wait_s: float = Field(gt=0)
 
 
-def record_only(transcript: str) -> Classification:
-    """FIFO mode: keep the transcript, classify nothing."""
-    extraction = Extraction(
-        situation=transcript[:160],
-        need="",
-        location=None,
-        life_threat_now=False,
-        needs_person_soon=False,
-        enough_information=False,
-        evidence=[],
-        missing=["classification is off in FIFO mode"],
-        language="not detected",
-    )
-    return Classification(extraction, Tier.UNKNOWN, "none")
-
-
-def classify(transcript: str) -> Classification:
-    if QUEUE.mode == "model":
-        try:
-            return extract.classify_with_model(transcript)
-        except anthropic.APIError as error:
-            raise HTTPException(502, f"Claude extraction failed: {type(error).__name__}: {error}") from error
-    if QUEUE.mode == "rules":
-        return extract.classify_with_rules(transcript)
-    return record_only(transcript)
-
-
-def set_mode(mode: Mode) -> None:
+def check_mode(mode: str):
     if mode == "model" and not extract.model_available():
         raise HTTPException(409, "ANTHROPIC_API_KEY is not set; model mode is unavailable")
-    QUEUE.mode = mode
-
-
-def call_dict(call: HeldCall, fifo_positions: dict[str, int], tiered_positions: dict[str, int]) -> dict:
-    return {
-        "call_id": call.call_id,
-        "arrival": call.arrival,
-        "waited_s": QUEUE.now() - call.arrival,
-        "tier": call.tier.value,
-        "source": call.source,
-        "transcript": call.transcript,
-        "extraction": call.extraction.model_dump() if call.extraction else None,
-        "fifo_position": fifo_positions[call.call_id],
-        "tiered_position": tiered_positions[call.call_id],
-    }
-
-
-def one_call(call: HeldCall) -> dict:
-    fifo = {item.call_id: i for i, item in enumerate(QUEUE.order("fifo"))}
-    tiered = {item.call_id: i for i, item in enumerate(QUEUE.order("tiered"))}
-    return call_dict(call, fifo, tiered)
 
 
 def state() -> dict:
-    fifo = {item.call_id: i for i, item in enumerate(QUEUE.order("fifo"))}
-    tiered_order = QUEUE.order("tiered")
-    tiered = {item.call_id: i for i, item in enumerate(tiered_order)}
-    return {
-        "mode": QUEUE.mode,
-        "model_available": extract.model_available(),
-        "active_policy": QUEUE.active_policy,
-        "max_normal_wait_s": MAX_NORMAL_WAIT_S,
-        "invariants": INVARIANTS,
-        "waiting": [call_dict(call, fifo, tiered) for call in tiered_order],
-        "clusters": QUEUE.clusters(),
-        "handoffs": [handoff_dict(handoff) for handoff in QUEUE.handoffs[-20:]],
-        "departed": [
-            {"call_id": d.call_id, "waited_s": d.waited_s, "reason": d.reason, "at": d.at} for d in QUEUE.departed[-20:]
-        ],
-    }
+    return {**QUEUE.snapshot(), "model_available": extract.model_available(),
+            "max_normal_wait_s": MAX_NORMAL_WAIT_S, "invariants": INVARIANTS}
 
 
-def handoff_dict(handoff) -> dict:
-    return {
-        "call_id": handoff.call_id,
-        "tier": handoff.tier.value,
-        "waited_s": handoff.waited_s,
-        "summary": handoff.summary,
-        "transcript": handoff.transcript,
-        "extraction": handoff.extraction.model_dump() if handoff.extraction else None,
-        "at": handoff.at,
-    }
+def one_call(call: HeldCall) -> dict:
+    return next(c for c in QUEUE.snapshot()["calls"] if c["call_id"] == call.call_id)
 
 
-def waiting_call(call_id: str) -> None:
-    if call_id not in {call.call_id for call in QUEUE.order("fifo")}:
-        raise HTTPException(404, f"no call {call_id} is waiting")
+def require_call(call_id: str) -> HeldCall:
+    try:
+        return QUEUE.call(call_id)
+    except KeyError:
+        raise HTTPException(404, f"Unknown call {call_id}") from None
+
+
+def process_turn(call_id: str, text: str) -> dict:
+    require_call(call_id)
+    try:
+        return one_call(QUEUE.say(call_id, text))
+    except Conflict:
+        raise
+    except ValueError as error:
+        # Validation from a failed model is recorded by the desk and needs review.
+        status = 502 if QUEUE.call(call_id).error else 422
+        raise HTTPException(status, {"call_id": call_id, "message": "Interview failed; message saved for human review" if status == 502 else str(error)}) from error
+    except Exception as error:
+        raise HTTPException(502, {"call_id": call_id, "message": "Interview failed; message saved for human review", "type": type(error).__name__}) from error
 
 
 @app.get("/health")
@@ -178,44 +143,77 @@ def get_state() -> dict:
     return state()
 
 
+@app.get("/calls/{call_id}")
+def get_call(call_id: str) -> dict:
+    return one_call(require_call(call_id))
+
+
 @app.post("/calls", status_code=201)
 def new_call(body: NewCall) -> dict:
+    if body.text is not None and not body.text.strip():
+        raise HTTPException(422, "utterance cannot be blank")
     call = QUEUE.add()
-    if body.text:
-        QUEUE.say(call.call_id, body.text, classify)
-    return one_call(call)
+    return process_turn(call.call_id, body.text) if body.text else one_call(call)
 
 
 @app.post("/calls/{call_id}/say")
 def say(call_id: str, body: Utterance) -> dict:
-    waiting_call(call_id)
-    return one_call(QUEUE.say(call_id, body.text, classify))
+    return process_turn(call_id, body.text)
+
+
+@app.post("/calls/{call_id}/silence")
+def silence(call_id: str) -> dict:
+    require_call(call_id)
+    return one_call(QUEUE.silence(call_id))
 
 
 @app.post("/calls/{call_id}/hangup")
 def hang_up(call_id: str) -> dict:
-    waiting_call(call_id)
-    departure = QUEUE.hang_up(call_id)
-    return {"call_id": departure.call_id, "waited_s": departure.waited_s, "reason": departure.reason, "at": departure.at}
+    require_call(call_id)
+    return asdict(QUEUE.hang_up(call_id))
+
+
+@app.post("/calls/{call_id}/disconnect")
+def disconnect(call_id: str) -> dict:
+    require_call(call_id)
+    return asdict(QUEUE.hang_up(call_id, disconnected=True))
 
 
 @app.post("/operator/free")
-def operator_free() -> dict:
-    handoff = QUEUE.operator_free()
-    return {"handoff": handoff_dict(handoff) if handoff else None}
+def operator_free(body: Operator = Operator()) -> dict:
+    call = QUEUE.claim(body.operator_id)
+    return {"handoff": one_call(call) if call else None}
+
+
+@app.post("/handoffs/{transfer_id}/confirm")
+def confirm(transfer_id: str, body: Confirmation) -> dict:
+    return one_call(QUEUE.confirm(transfer_id, body.success))
+
+
+@app.post("/calls/{call_id}/complete")
+def complete(call_id: str) -> dict:
+    require_call(call_id)
+    return one_call(QUEUE.finish(call_id))
+
+
+@app.post("/calls/{call_id}/callback-review")
+def callback_review(call_id: str, body: CallbackReview) -> dict:
+    require_call(call_id)
+    return one_call(QUEUE.review_callback(call_id, body.disposition))
 
 
 @app.post("/mode")
 def change_mode(body: ModeChange) -> dict:
-    set_mode(body.mode)
+    check_mode(body.mode)
+    QUEUE.mode = body.mode
     return state()
 
 
 @app.post("/reset")
 def reset(body: Reset) -> dict:
-    global QUEUE
-    QUEUE = HoldQueue(max_normal_wait=MAX_NORMAL_WAIT_S)
-    set_mode(body.mode or default_mode())
+    mode = body.mode or default_mode()
+    check_mode(mode)
+    QUEUE.reset(mode)
     return state()
 
 

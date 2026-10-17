@@ -23,9 +23,9 @@ Required by the rules. Add each tool when it is first used.
 | Tool | Used for |
 |---|---|
 | Claude Code | Coding assistant for the repository |
-| OpenAI Codex | Dataset acquisition, integrity checks and repository documentation |
+| OpenAI Codex | Dataset analysis, multi-turn reception implementation, tests and documentation |
 | ChatGPT (6 Pro) | Idea evaluation, competitor and dataset research before the build |
-| Claude API (Anthropic SDK, `claude-haiku-5-5`) | Extraction of caller fields in the build (structured output); the tier is decided by rules in code |
+| Claude API (Anthropic SDK, `claude-haiku-5-5`) | Contextual interview questions and structured caller-field extraction; code controls tier rules and handoff |
 
 ## Pitch outline (5 minutes)
 

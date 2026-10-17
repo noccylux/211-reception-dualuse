@@ -1,54 +1,69 @@
-# The Dual-Use Hackathon
+# 211 reception and hold-queue assistant
 
-Our team's build for the [Dual-Use Hackathon](https://www.innovatelosangeles.com/dual-use)
-(InnovateLA × USC Viterbi, Los Angeles, 2026-10-16 to 18): a hold-queue
-assistant for an overloaded 211-type community and disaster line. While
-callers wait for an operator, an assistant interviews them, Claude extracts
-structured fields, deterministic rules put the callers who need a person now
-ahead (FIFO inside a tier, unknown stays with priority, bounded delay for
-everyone else), and the call transfers with a summary the moment an operator
-is free. It never hangs up and never makes the final decision.
+A local text demo for a community and disaster assistance line. A caller joins
+an actual application queue, talks to an automated reception assistant while
+waiting, and passes to an operator with the conversation, evidence and summary.
+Claude proposes contextual follow-up questions and extracts fields; code owns
+queue order, recording and handoff. Telephone service is not connected.
 
-- Event facts and deadlines: [docs/hackathon.md](docs/hackathon.md)
-- Problem and twists: [docs/problem/](docs/problem/)
-- What we built and why: [docs/architecture.md](docs/architecture.md), [docs/changes/](docs/changes/)
-- Submission checklist: [docs/submission.md](docs/submission.md)
+## Run
 
-## Quickstart
+Run from this checkout, using WSL and the shared `.venv_wsl` as described
+in [the environment rules](docs/agents/environment.md). No new dependencies
+are required by the reception upgrade. Two terminals:
 
-Requires the WSL distribution `WSL` with uv; see
-[docs/agents/environment.md](docs/agents/environment.md).
-
-```bash
-cp .env.example .env                               # then fill in API keys
-bash scripts/uv-run.sh python scripts/check_keys.py
-bash scripts/uv-run.sh python -m pytest
-bash scripts/uv-run.sh uvicorn dualuse.api:app --reload --host 0.0.0.0 --port 8000
-bash scripts/uv-run.sh streamlit run dualuse/ui.py --server.port 8501
+```powershell
+.\scripts\uv-run.ps1 uvicorn dualuse.api:app --host 127.0.0.1 --port 8000
+.\scripts\uv-run.ps1 streamlit run dualuse/ui.py --server.address 127.0.0.1 --server.port 8501 --server.headless true
 ```
 
-The API serves on <http://localhost:8000> (docs at `/docs`), the supervisor
-board on <http://localhost:8501>. With `ANTHROPIC_API_KEY` set the board
-starts in model mode (Claude extracts fields, rules decide the tier); without
-it, the keyword-rules baseline runs and the board says so. The "FIFO" mode is
-the degraded path: classification off, today's order.
+Open <http://localhost:8501>. For an isolated demo alongside the original ports:
 
-## Demo path
+```powershell
+.\scripts\uv-run.ps1 env DUALUSE_QUEUE_DB=.tmp/reception-demo.sqlite3 uvicorn dualuse.api:app --host 127.0.0.1 --port 8020
+.\scripts\uv-run.ps1 env DUALUSE_API_URL=http://127.0.0.1:8020 streamlit run dualuse/ui.py --server.address 127.0.0.1 --server.port 8521 --server.headless true
+```
 
-1. Live hold queue: let a routine caller join ("Is the 210 freeway open towards
-   Pasadena?"), then a Spanish fire call ("Mi casa se está quemando y mi hijo
-   está adentro."). The FIFO and tiered orders differ; the call card shows the
-   extracted fields, the quoted evidence and what is still unknown.
-2. "An operator is free": the head of the tiered queue hands off with the
-   summary card.
-3. Surge replay (simulated): the same synthetic surge under FIFO, keyword
-   rules and model tiers, with the urgent tier's wait next to the normal
-   tier's cost and the misses.
+Keep one API process per database: do not use multiple workers. `ANTHROPIC_API_KEY`
+selects the Claude interview; the sidebar also offers explicitly labeled English
+keyword mode and FIFO without interviewing. Model failures remain visible and
+retain the caller's message for human review. They do not silently switch models.
 
-Every panel labels its data as live, recorded or simulated; the sample
-utterances were written by the team.
+## Demonstrate
 
-## Stack
+Use two browser tabs, one on **Caller conversation**, one on **Operator desk**.
+The following is a team-written scenario, not a real call:
 
-Python 3.14, FastAPI, Streamlit, Anthropic SDK (`claude-haiku-5-5` for
-extraction), Retell SDK (voice agent, planned), pandas, Plotly.
+1. Join as a routine caller and ask about FEMA assistance. Join another caller
+   and say "I see smoke coming from a building."
+2. Answer the assistant's question with "It is at 12 Oak Street. I am outside."
+   Then disclose "Someone on the second floor is shouting for help and cannot
+   get out." See the risk evidence, tier change and report in the operator desk.
+3. A third caller can report smoke at the same address. **Incident reports**
+   associates matching kind and location without downgrading any person's risk.
+4. Reserve the next caller as `operator-1`. Confirm human takeover, or mark the
+   transfer failed to return the call with its original arrival time. Reserving
+   works during a model request; late replies cannot change a transferred call.
+5. Complete the operator-held call to free the seat. The transcript and summary
+   remain in history. Restart the API to verify persistence.
+6. Under **Demo call events**, send two no-response events, or disconnect a call.
+   Review the resulting attention flag or callback task from the operator desk.
+   These buttons simulate connection events; no silence detector or dialer exists.
+
+SQLite saves calls, conversations, events and review tasks to
+`.tmp/211-queue.sqlite3` by default (`DUALUSE_QUEUE_DB` overrides it). Reset explicitly
+clears this desk. There is no authentication: use only local demo data.
+
+## Verify and interpret
+
+```powershell
+.\scripts\uv-run.ps1 python -m pytest tests -q
+```
+
+Tests use isolated databases and no paid model calls. The scenario simulator
+still uses synthetic calls and assumed classifier error rates. It does not
+measure Claude accuracy, real queue waits or trained-model performance. Real-data
+training/evaluation and Retell voice integration remain next steps.
+
+Details: [architecture](docs/architecture.md), [change record](docs/changes/2026-10-17-006-reception-agent.md),
+[event](docs/hackathon.md), [submission](docs/submission.md).

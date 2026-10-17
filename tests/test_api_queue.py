@@ -32,12 +32,16 @@ def test_saying_something_life_threatening_moves_the_call_to_the_tiered_head(cli
     assert waiting[second["call_id"]]["fifo_position"] == 1 and waiting[second["call_id"]]["tiered_position"] == 0
 
 
-def test_operator_free_hands_off_the_head_with_a_summary(client):
+def test_operator_free_reserves_then_confirms_the_head_with_a_summary(client):
     client.post("/calls", json={"text": "is the 210 freeway open towards Pasadena"})
     urgent = client.post("/calls", json={"text": "my house is on fire and my kid is inside"}).json()
     handoff = client.post("/operator/free").json()["handoff"]
     assert handoff["call_id"] == urgent["call_id"] and handoff["tier"] == "immediate"
     assert "IMMEDIATE" in handoff["summary"] and "on fire" in handoff["summary"]
+    assert handoff["status"] == "connecting"
+    assert client.get("/state").json()["handoffs"] == []
+    confirmed = client.post(f"/handoffs/{handoff['transfer_id']}/confirm", json={"success": True})
+    assert confirmed.status_code == 200 and confirmed.json()["status"] == "handed_off"
     state = client.get("/state").json()
     assert len(state["waiting"]) == 1 and state["handoffs"][0]["call_id"] == urgent["call_id"]
 

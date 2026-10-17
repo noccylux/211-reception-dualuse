@@ -1,226 +1,213 @@
-"""Streamlit supervisor board for the hold-queue assistant, a client of `dualuse.api`.
-
-Run: bash scripts/uv-run.sh streamlit run dualuse/ui.py --server.port 8501
-Every panel says whether what it shows is live, recorded or simulated.
-"""
-
+"""Caller conversation and operator desk for the local 211 text demo."""
 import os
-
 import httpx
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
 API_URL = os.environ.get("DUALUSE_API_URL", "http://localhost:8000")
-
 TIER_ICON = {"immediate": "🔴", "priority": "🟠", "unknown": "⚪", "normal": "🟢"}
-TIER_TEXT = {
-    "immediate": "IMMEDIATE, life-threatening now",
-    "priority": "PRIORITY, needs a person soon",
-    "unknown": "UNKNOWN, not enough information (kept with priority)",
-    "normal": "NORMAL, can wait",
-}
-MODE_TEXT = {
-    "model": "Model: Claude extracts fields, rules decide the tier",
-    "rules": "Rules: keyword baseline, no model",
-    "fifo": "FIFO: classification off, today's order (degraded mode)",
-}
-POLICY_TEXT = {
-    "fifo": "FIFO (today)",
-    "rules": "Keyword rules + FIFO inside a tier (assumed accuracy)",
-    "model": "Model tiers + FIFO inside a tier",
-}
-# Categorical slots 1 to 3 of the validated default palette (dataviz skill, light surface).
+POLICY_TEXT = {"fifo": "FIFO", "rules": "Assumed keyword accuracy", "model": "Assumed model accuracy"}
 POLICY_COLOR = {"fifo": "#2a78d6", "rules": "#eb6834", "model": "#1baf7a"}
 TRUE_TIERS = ["immediate", "priority", "normal"]
-
-st.set_page_config(page_title="Hold-queue assistant", layout="wide")
+st.set_page_config(page_title="211 Reception", layout="wide")
 
 
 class ApiError(Exception):
-    def __init__(self, status: int, text: str) -> None:
-        super().__init__(f"{status}: {text}")
-        self.status = status
+    pass
 
 
-def api(method: str, path: str, **kwargs) -> dict | list:
+def api(method, path, **kwargs):
     try:
-        response = httpx.request(method, f"{API_URL}{path}", timeout=60, **kwargs)
+        response = httpx.request(method, API_URL + path, timeout=45, **kwargs)
     except httpx.HTTPError as error:
-        st.error(f"API at {API_URL} is unreachable: {error}")
-        st.stop()
+        raise ApiError(f"API unavailable: {type(error).__name__}. Refresh to check whether your action was saved.") from error
     if response.status_code >= 400:
-        raise ApiError(response.status_code, response.text)
+        raise ApiError(f"{response.status_code}: {response.text}")
     return response.json()
 
 
-def call_api(method: str, path: str, **kwargs) -> dict | list:
-    """Like `api`, but an error ends the run with the message on screen."""
+def call_api(method, path, **kwargs):
     try:
         return api(method, path, **kwargs)
     except ApiError as error:
-        st.error(f"{method} {path} failed with {error}")
+        st.error(str(error))
         st.stop()
 
 
-def fmt_wait(seconds: float | None) -> str:
-    if seconds is None:
-        return "n/a"
-    minutes, rest = divmod(int(seconds), 60)
-    return f"{minutes} min {rest} s" if minutes else f"{rest} s"
+def fmt_wait(seconds):
+    minutes, rest = divmod(max(0, int(seconds)), 60)
+    return f"{minutes}m {rest}s"
 
 
-def minutes(seconds: float | None) -> float | None:
+def minutes(seconds):
     return None if seconds is None else round(seconds / 60, 1)
 
 
-def tier_line(call: dict) -> str:
-    return f"{TIER_ICON[call['tier']]} {call['call_id']} · {call['tier']} · waited {fmt_wait(call['waited_s'])}"
+def tier_line(call):
+    return f"{TIER_ICON[call['tier']]} {call['call_id']} · {call['tier']} · {fmt_wait(call['waited_s'])}"
 
 
-state = call_api("GET", "/state")
-
+st.title("211 Reception")
+st.caption("Local text demonstration · no telephone connection, dispatch, or automatic callback")
+view = st.sidebar.radio("Workspace", ["Caller conversation", "Operator desk", "Incident reports", "Scenario simulator", "About this demo"])
+initial = call_api("GET", "/state")
 with st.sidebar:
-    st.title("Hold-queue assistant")
-    st.caption("211-type community and disaster line · supervisor board · demo build")
-    st.subheader("Mode")
-    modes = list(MODE_TEXT)
-    chosen = st.radio("Classification", modes, index=modes.index(state["mode"]), format_func=MODE_TEXT.get)
-    if chosen != state["mode"]:
-        try:
-            api("POST", "/mode", json={"mode": chosen})
-        except ApiError as error:
-            st.warning(f"Could not switch: {error}")
-        else:
+    st.caption("Persistent local desk" if initial["persistent"] else "Memory-only desk")
+    mode = st.selectbox("Reception mode", ["model", "rules", "fifo"], index=["model", "rules", "fifo"].index(initial["mode"]),
+                        format_func=lambda m: {"model": "Claude: contextual interview", "rules": "Offline: English keyword baseline", "fifo": "FIFO: record without interviewing"}[m])
+    if mode != initial["mode"]:
+        call_api("POST", "/mode", json={"mode": mode})
+        st.rerun()
+    if not initial["model_available"]:
+        st.info("Model credentials are unavailable. Select the labeled offline mode.")
+    st.caption("Use two browser tabs for caller and operator. One shared demo queue; no authentication.")
+    with st.expander("Reset local demo"):
+        clear = st.checkbox("Clear stored calls, reports and history")
+        if st.button("Reset desk", disabled=not clear):
+            call_api("POST", "/reset", json={"mode": mode})
+            st.session_state.pop("selected_call", None)
             st.rerun()
-    if not state["model_available"]:
-        st.info("ANTHROPIC_API_KEY is not set, so model mode is unavailable; the rules baseline runs instead.")
-    if st.button("Reset the queue"):
-        call_api("POST", "/reset", json={})
-        st.session_state.pop("handoff", None)
-        st.rerun()
-    st.subheader("Never automated")
-    for line in state["invariants"]:
-        st.markdown(f"✅ {line}")
 
-live, replay, about = st.tabs(["Live hold queue", "Surge replay (simulated)", "About the data"])
 
-with live:
-    top = st.columns(4)
-    top[0].metric("Waiting", len(state["waiting"]))
-    top[1].metric("Active order", state["active_policy"])
-    top[2].metric("Handed off", len(state["handoffs"]))
-    top[3].metric("Hung up (caller's choice)", len(state["departed"]))
-
-    st.subheader("A caller joins the hold queue")
-    st.caption("Sample utterances were written by the team for the demo; they are simulated callers, not recordings.")
-    samples = call_api("GET", "/samples")
-    labels = {f"{sample['text']}  (expected: {sample['expected']})": sample["text"] for sample in samples}
-    with st.form("join", clear_on_submit=True):
-        pick = st.selectbox("Pick a sample or write your own below", ["(write your own)"] + list(labels))
-        typed = st.text_input("What the caller says", placeholder="e.g. we evacuated and have nowhere to sleep tonight")
-        join = st.columns(2)
-        says = join[0].form_submit_button("Caller joins and says this", type="primary")
-        silent = join[1].form_submit_button("A silent caller joins")
-    if says:
-        text = typed.strip() or labels.get(pick, "")
-        if not text:
-            st.warning("Pick a sample or type something first.")
-        else:
-            call_api("POST", "/calls", json={"text": text})
-            st.rerun()
-    if silent:
-        call_api("POST", "/calls", json={})
-        st.rerun()
-
-    st.subheader("Two orders of the same queue")
-    fifo_col, tiered_col = st.columns(2)
-    by_fifo = sorted(state["waiting"], key=lambda call: call["fifo_position"])
-    with fifo_col:
-        st.markdown("**FIFO, today's behavior**")
-        for call in by_fifo:
-            st.markdown(f"{call['fifo_position'] + 1}. {tier_line(call)}")
-        if not by_fifo:
-            st.caption("Nobody is waiting.")
-    with tiered_col:
-        st.markdown(f"**Tiered, this build** (FIFO inside a tier; normal promoted after {state['max_normal_wait_s'] // 60:.0f} min)")
-        for call in state["waiting"]:
-            st.markdown(f"{call['tiered_position'] + 1}. {tier_line(call)}")
-        if not state["waiting"]:
-            st.caption("Nobody is waiting.")
-
-    if st.button("An operator is free: transfer the head of the queue", type="primary"):
-        result = call_api("POST", "/operator/free")
-        st.session_state["handoff"] = result["handoff"]
-        st.rerun()
-    handoff = st.session_state.get("handoff")
-    if handoff is not None:
-        with st.container(border=True):
-            st.markdown(f"**Handoff card for {handoff['call_id']}** · {TIER_ICON[handoff['tier']]} {TIER_TEXT[handoff['tier']]}")
-            st.code(handoff["summary"], language=None)
-            if handoff["transcript"]:
-                st.caption("Transcript: " + " / ".join(handoff["transcript"]))
-    elif "handoff" in st.session_state:
-        st.info("Nobody was waiting.")
-
-    st.subheader("Waiting callers")
-    for call in state["waiting"]:
-        with st.expander(tier_line(call), expanded=call["tier"] in ("immediate", "unknown")):
-            st.markdown(f"Tier: **{TIER_TEXT[call['tier']]}** · source: `{call['source']}`")
-            if call["transcript"]:
-                st.markdown("Transcript:")
-                for line in call["transcript"]:
-                    st.markdown(f"> {line}")
-            else:
-                st.caption("The caller has not said anything yet.")
-            if call["extraction"]:
-                x = call["extraction"]
-                st.markdown(
-                    f"- Situation: {x['situation']}\n"
-                    f"- Need: {x['need'] or 'not stated'}\n"
-                    f"- Location: {x['location'] or 'not confirmed'}\n"
-                    f"- Life threat now: {x['life_threat_now']} · needs a person soon: {x['needs_person_soon']} · "
-                    f"enough information: {x['enough_information']}\n"
-                    f"- Evidence: {'; '.join(x['evidence']) or 'none'}\n"
-                    f"- Still unknown: {', '.join(x['missing']) or 'nothing flagged'}\n"
-                    f"- Language: {x['language']}"
-                )
-            more = st.text_input("The caller says more", key=f"more-{call['call_id']}")
-            row = st.columns(2)
-            if row[0].button("Add what they said", key=f"say-{call['call_id']}"):
-                if more.strip():
-                    call_api("POST", f"/calls/{call['call_id']}/say", json={"text": more.strip()})
-                    st.rerun()
-            if row[1].button("Caller hangs up (their choice)", key=f"hangup-{call['call_id']}"):
-                call_api("POST", f"/calls/{call['call_id']}/hangup")
-                st.rerun()
-
-    st.subheader("Watch: incident clusters from what waiting callers said")
-    if state["clusters"]:
-        st.dataframe(
-            pd.DataFrame(
-                [
-                    {
-                        "location (as stated)": cluster["location"],
-                        "callers": cluster["count"],
-                        "tiers": ", ".join(f"{k} {v}" for k, v in cluster["tiers"].items()),
-                        "situations": " | ".join(cluster["situations"]),
-                    }
-                    for cluster in state["clusters"]
-                ]
-            ),
-            hide_index=True,
-            use_container_width=True,
-        )
+@st.fragment(run_every="2s")
+def caller_panel():
+    state = call_api("GET", "/state")
+    if st.button("Join as a new caller", type="primary"):
+        row = call_api("POST", "/calls", json={})
+        st.session_state["selected_call"] = row["call_id"]
+        st.rerun(scope="fragment")
+    ids = [c["call_id"] for c in state["calls"]]
+    if not ids:
+        st.info("Join the queue to start a conversation with the reception assistant.")
+        return
+    if st.session_state.get("selected_call") not in ids:
+        st.session_state["selected_call"] = ids[-1]
+    call_id = st.selectbox("Conversation", ids, key="selected_call")
+    call = next(c for c in state["calls"] if c["call_id"] == call_id)
+    if call["status"] == "waiting":
+        position = call["fifo_position"] if state["active_policy"] == "fifo" else call["tiered_position"]
+        st.info(f"Waiting · currently {position} callers ahead · {fmt_wait(call['waited_s'])}. Order may change with urgency.")
     else:
-        st.caption("No stated locations yet. Clusters appear when several waiting callers name the same place.")
+        st.info("Call status: " + call["status"].replace("_", " "))
+    if call["error"]:
+        st.warning("The last message was saved, but automated processing failed. An operator can review it.")
+    for turn in call["dialogue"]:
+        with st.chat_message("user" if turn["speaker"] == "caller" else "assistant"):
+            st.write(turn["text"])
+    if call["processing"]:
+        st.caption("The assistant is processing your message. An operator can still take over.")
+    text = st.chat_input("Tell the assistant what is happening", disabled=call["status"] != "waiting" or call["processing"])
+    if text:
+        try:
+            api("POST", f"/calls/{call_id}/say", json={"text": text})
+        except ApiError as error:
+            st.session_state["turn_error"] = str(error)
+        st.rerun(scope="fragment")
+    if "turn_error" in st.session_state:
+        st.error(st.session_state.pop("turn_error"))
+    with st.expander("Demo call events and sample prompts"):
+        st.caption("These controls simulate connection events; there is no audio detector or phone call.")
+        cols = st.columns(3)
+        waiting = call["status"] == "waiting"
+        active = call["status"] in ("waiting", "connecting")
+        if cols[0].button("No response event", disabled=not waiting or call["processing"]):
+            call_api("POST", f"/calls/{call_id}/silence")
+            st.rerun(scope="fragment")
+        if cols[1].button("Connection lost", disabled=not active):
+            call_api("POST", f"/calls/{call_id}/disconnect")
+            st.rerun(scope="fragment")
+        if cols[2].button("Caller chooses to hang up", disabled=not active):
+            call_api("POST", f"/calls/{call_id}/hangup")
+            st.rerun(scope="fragment")
+        st.caption("Team-written scenario: 'I see smoke' → 'at 12 Oak Street' → 'someone is shouting for help inside'.")
 
-    if state["handoffs"]:
-        st.subheader("Recent handoffs")
-        for item in reversed(state["handoffs"]):
-            st.markdown(f"{TIER_ICON[item['tier']]} {item['call_id']} · {item['tier']} · waited {fmt_wait(item['waited_s'])}")
 
-with replay:
+@st.fragment(run_every="2s")
+def operator_panel():
+    state = call_api("GET", "/state")
+    metrics = st.columns(4)
+    metrics[0].metric("Waiting", len(state["waiting"]))
+    metrics[1].metric("Immediate", sum(c["tier"] == "immediate" for c in state["waiting"]))
+    metrics[2].metric("Needs review", sum(bool(c["attention"]) for c in state["calls"] if c["status"] == "waiting"))
+    metrics[3].metric("Callback tasks", sum(c["callback_status"] == "pending_review" for c in state["calls"]))
+    operator = st.selectbox("Operator seat", ["operator-1", "operator-2", "operator-3"])
+    busy = any(c["operator_id"] == operator and c["status"] in ("connecting", "handed_off") for c in state["calls"])
+    if st.button("Available: reserve next caller", type="primary", disabled=busy or not state["waiting"]):
+        call_api("POST", "/operator/free", json={"operator_id": operator})
+        st.rerun(scope="fragment")
+    for call in state["calls"]:
+        if call["operator_id"] == operator and call["status"] in ("connecting", "handed_off"):
+            with st.container(border=True):
+                st.subheader(f"{call['call_id']} · {call['status']}")
+                st.text(call["summary"])
+                with st.expander("Full conversation", expanded=False):
+                    for turn in call["dialogue"]:
+                        st.write(f"{turn['speaker']}: {turn['text']}")
+                if call["status"] == "connecting":
+                    cols = st.columns(2)
+                    if cols[0].button("Confirm human takeover", key=f"confirm-{call['transfer_id']}"):
+                        call_api("POST", f"/handoffs/{call['transfer_id']}/confirm", json={"success": True})
+                        st.rerun(scope="fragment")
+                    if cols[1].button("Transfer failed: return to queue", key=f"fail-{call['transfer_id']}"):
+                        call_api("POST", f"/handoffs/{call['transfer_id']}/confirm", json={"success": False})
+                        st.rerun(scope="fragment")
+                elif st.button("Operator finished this call", key=f"done-{call['call_id']}"):
+                    call_api("POST", f"/calls/{call['call_id']}/complete")
+                    st.rerun(scope="fragment")
+    st.subheader("Waiting queue")
+    if state["waiting"]:
+        st.dataframe([{"call": c["call_id"], "tier": c["tier"], "wait": fmt_wait(c["waited_s"]),
+                       "FIFO position": c["fifo_position"] + 1, "tiered position": c["tiered_position"] + 1,
+                       "processing": c["processing"], "review": c["attention"]} for c in state["waiting"]], hide_index=True)
+    for call in state["waiting"]:
+        with st.expander(tier_line(call)):
+            st.caption(f"Source: {call['source']} · interview {'running' if call['processing'] else 'idle'}")
+            if call["attention"]:
+                st.warning(call["attention"])
+            st.text(call["summary"])
+            st.write(call["extraction"] or "No extraction yet")
+            for turn in call["dialogue"]:
+                st.write(f"{turn['speaker']}: {turn['text']}")
+    tasks = [c for c in state["calls"] if c["callback_status"] == "pending_review"]
+    if tasks:
+        st.subheader("Callback review · no automatic dialing")
+    for call in tasks:
+        with st.expander(f"{call['call_id']} · {call['status']} · {call['tier']}"):
+            st.text(call["summary"])
+            st.caption("No telephone number is collected in this text demo. Record the operator's review outcome only.")
+            disposition = st.selectbox("Outcome", ["handled_by_operator", "no_callback_needed"], key=f"review-{call['call_id']}")
+            if st.button("Record review", key=f"review-save-{call['call_id']}"):
+                call_api("POST", f"/calls/{call['call_id']}/callback-review", json={"disposition": disposition})
+                st.rerun(scope="fragment")
+    with st.expander("Audit trail and completed handoffs"):
+        st.dataframe(list(reversed(state["events"])), hide_index=True)
+        for handoff in reversed(state["handoffs"]):
+            st.write(f"{handoff['call_id']} → {handoff['operator_id']}")
+            st.text(handoff["summary"])
+
+
+@st.fragment(run_every="2s")
+def incident_panel():
+    state = call_api("GET", "/state")
+    st.info("Unverified caller reports. Matching kind and stated location suggests a possible shared incident; it does not verify the event or dispatch anyone.")
+    for cluster in state["clusters"]:
+        with st.container(border=True):
+            st.subheader(f"{cluster['kind']} · {cluster['location']}")
+            st.write(f"{cluster['count']} reports · " + ", ".join(cluster["call_ids"]))
+            for call_id, situation in zip(cluster["call_ids"], cluster["situations"]):
+                st.write(f"{call_id}: {situation}")
+    if not state["clusters"]:
+        st.caption("Reports appear when callers identify an incident and its location.")
+
+
+if view == "Caller conversation":
+    caller_panel()
+elif view == "Operator desk":
+    operator_panel()
+elif view == "Incident reports":
+    incident_panel()
+elif view == "Scenario simulator":
     st.markdown(
         "**Simulated.** A synthetic surge from the parameters below, replayed under three queue policies with the "
         "same arrivals, operators, service times and caller patience. Defaults are informed by 211 LA's "
@@ -341,20 +328,20 @@ with replay:
         st.dataframe(shares, use_container_width=True)
         st.caption(result["note"])
 
-with about:
-    st.markdown(
-        """
-| Source | Live / recorded / simulated | Used for |
-|---|---|---|
-| Sample utterances on the live tab | simulated (written by the team) | Driving the extraction and the queue in the demo |
-| Live typed or spoken calls | live | The same path with real input |
-| Synthetic surge (replay tab) | simulated, labeled | Comparing queue policies on identical inputs |
-| 211 LA January 2025 wildfires after-action report, Appendix D | recorded, daily aggregates | Scenario defaults and the problem's scale |
-| Austin APD 911 Calls for Service 2023 to 2026 | recorded (police dispatch records) | Planned: arrival timestamps and priority mix |
-| Munro disaster response messages | recorded (real disaster SMS, CC BY 4.0) | Planned: extraction evaluation, including the original-language column |
-| spikecodes 911 transcripts | recorded, edited by the publisher | Planned: demo utterances only, never evaluation |
 
-The queue never ends a call, never makes the final decision and never contacts agencies on its own.
-Design and rationale: `docs/architecture.md` and `docs/changes/` in the repository.
-"""
-    )
+elif view == "About this demo":
+    st.markdown("""
+This build interviews callers through typed messages. Claude extracts fields and proposes a
+contextual follow-up question; the program controls queue ordering, recording and handoff.
+Offline mode uses English keywords and fixed questions and is explicitly labeled.
+
+Calls, conversations, reports, callback tasks and audit events persist in a local SQLite database.
+There is no connected telephone service, medical advice workflow, dispatch, or automated callback.
+The operator confirms handoff using the demo controls. Treat the desk as a local, single-process demo.
+
+The scenario simulator uses synthetic calls and **assumed** classifier error rates. It does not
+run Claude or measure real-world waiting times. No model has been trained or evaluated on the
+downloaded datasets in this version. Real-data evaluation is a separate next step.
+""")
+    for invariant in initial["invariants"]:
+        st.write("• " + invariant)

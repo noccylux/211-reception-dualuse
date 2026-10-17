@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 from dualuse.config import ROOT
 from dualuse import extract
 from dualuse.holdqueue import Conflict, HeldCall, HoldQueue
+from dualuse.profiles import PROFILES
 from dualuse.samples import SAMPLES
 from dualuse.surge import SurgeSpec, three_policy_comparison
 from dualuse.triage import Tier
@@ -66,6 +67,17 @@ class Reset(BaseModel):
     mode: Mode | None = None
 
 
+class ProfileChange(BaseModel):
+    profile: str
+
+    @field_validator("profile")
+    @classmethod
+    def known(cls, value):
+        if value not in PROFILES:
+            raise ValueError(f"profile must be one of {sorted(PROFILES)}")
+        return value
+
+
 class Operator(BaseModel):
     operator_id: str = Field(default="operator-1", min_length=1, max_length=80, pattern=r"^[\w-]+$")
 
@@ -105,7 +117,8 @@ def check_mode(mode: str):
 
 def state() -> dict:
     return {**QUEUE.snapshot(), "model_available": extract.model_available(),
-            "max_normal_wait_s": MAX_NORMAL_WAIT_S, "invariants": INVARIANTS}
+            "max_normal_wait_s": MAX_NORMAL_WAIT_S, "invariants": INVARIANTS,
+            "profiles": [{"key": p.key, "name": p.name, "languages": list(p.languages)} for p in PROFILES.values()]}
 
 
 def one_call(call: HeldCall) -> dict:
@@ -206,6 +219,12 @@ def callback_review(call_id: str, body: CallbackReview) -> dict:
 def change_mode(body: ModeChange) -> dict:
     check_mode(body.mode)
     QUEUE.mode = body.mode
+    return state()
+
+
+@app.post("/profile")
+def change_profile(body: ProfileChange) -> dict:
+    QUEUE.profile = body.profile
     return state()
 
 

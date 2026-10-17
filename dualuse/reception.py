@@ -23,6 +23,8 @@ class ReceptionTurn:
     topic: str
     question: str
     review: str = ""  # what the operator should double-check; empty when nothing was flagged
+    language: str = ""  # BCP 47 code the caller writes in; empty keeps the call's current language
+    distress: str = ""
 
 
 QUESTIONS = {

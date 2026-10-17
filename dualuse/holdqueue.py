@@ -13,12 +13,12 @@ from pathlib import Path
 from typing import Callable
 
 from dualuse.extract import Classification, Extraction, handoff_summary
+from dualuse.profiles import PROFILES, language_of, line, welcome
 from dualuse.reception import ReceptionTurn, receive
 from dualuse.storage import DeskStore
 from dualuse.triage import Fifo, Tier, Tiered, Waiting, order
 
 MODES = ("model", "rules", "fifo")
-EMERGENCY_NUMBER = "911"  # a 211 line is not an emergency line; danger now goes to 911
 
 
 class Conflict(ValueError):
@@ -45,6 +45,9 @@ class HeldCall:
     transfer_id: str = ""
     operator_id: str = ""
     ended_at: float | None = None
+    profile: str = "la-211"
+    language: str = "en"  # primary language subtag; desk lines follow it
+    distress: str = "unknown"
 
 
 @dataclass(frozen=True)
@@ -83,13 +86,16 @@ def _encode(value):
 
 class HoldQueue:
     def __init__(self, max_normal_wait: float, clock: Callable[[], float] = time.time,
-                 db_path: Path | None = None, mode: str = "model") -> None:
+                 db_path: Path | None = None, mode: str = "model", profile: str = "la-211") -> None:
+        if profile not in PROFILES:
+            raise ValueError(f"profile must be one of {tuple(PROFILES)}")
         self._lock = threading.RLock()
         self._clock = clock
         self._policies = {"fifo": Fifo(), "tiered": Tiered(max_normal_wait)}
         self._store = DeskStore(db_path) if db_path else None
         self._calls: dict[str, HeldCall] = {}
         self._mode = mode
+        self._profile = profile
         self._counter = 0
         self.handoffs: list[Handoff] = []
         self.departed: list[Departure] = []
@@ -97,6 +103,7 @@ class HoldQueue:
         saved = self._store.load() if self._store else None
         if saved:
             self._mode, self._counter = saved["mode"], saved["counter"]
+            self._profile = saved.get("profile", profile)  # desks saved before profiles existed
             for row in saved["calls"]:
                 row["tier"] = Tier(row["tier"])
                 row["extraction"] = Extraction.model_validate(row["extraction"]) if row["extraction"] else None
@@ -121,7 +128,7 @@ class HoldQueue:
 
     def _save(self):
         if self._store:
-            self._store.save({"mode": self._mode, "counter": self._counter,
+            self._store.save({"mode": self._mode, "profile": self._profile, "counter": self._counter,
                               "calls": [_encode(c) for c in self._calls.values()],
                               "handoffs": [_encode(h) for h in self.handoffs],
                               "departed": [asdict(d) for d in self.departed], "events": self.events})
@@ -132,6 +139,10 @@ class HoldQueue:
     def _speak(self, call: HeldCall, text: str, topic: str = "status"):
         if text:
             call.dialogue.append({"speaker": "assistant", "text": text, "at": self.now(), "topic": topic})
+
+    def _desk(self, call: HeldCall, key: str):
+        """Say a code-owned line in the caller's language, with the call's profile numbers."""
+        self._speak(call, line(call.profile, key, call.language))
 
     def _interrupt(self, call: HeldCall, reason: str) -> bool:
         """Cancel a running turn. Its caller message was never classified, so a person must read it."""
@@ -158,6 +169,19 @@ class HoldQueue:
                 for call in self._calls.values():
                     self._interrupt(call, "Mode changed during an interview")
             self._mode = value
+            self._save()
+
+    @property
+    def profile(self) -> str:
+        return self._profile
+
+    @profile.setter
+    def profile(self, value: str):
+        """Applies to calls that join from now on; waiting calls keep the line they called."""
+        if value not in PROFILES:
+            raise ValueError(f"profile must be one of {tuple(PROFILES)}")
+        with self._lock:
+            self._profile = value
             self._save()
 
     @property
@@ -189,14 +213,11 @@ class HoldQueue:
                 call_id = f"call-{self._counter}"
             if call_id in self._calls:
                 raise ValueError(f"call {call_id} already exists")
-            call = HeldCall(call_id, self.now(), last_activity=self.now())
+            call = HeldCall(call_id, self.now(), last_activity=self.now(), profile=self._profile,
+                            language=PROFILES[self._profile].languages[0])
             self._calls[call_id] = call
             ahead = [c.call_id for c in self.order(self.active_policy)].index(call_id)
-            reorder = "" if self.active_policy == "fifo" else " The order can change when someone reports an urgent need."
-            self._speak(call, f"You are in the waiting queue. Callers ahead of you: {ahead}.{reorder} "
-                        f"If you or someone else is in danger right now, call {EMERGENCY_NUMBER}. "
-                        "I am an automated reception assistant. You can tell me what happened and what help "
-                        "you need while you wait, or wait for a person without answering my questions.", "welcome")
+            self._speak(call, welcome(call.profile, call.language, ahead, reorders=self.active_policy != "fifo"), "welcome")
             self._log(call, "joined", "Entered queue; no information yet")
             self._save()
             return call
@@ -226,7 +247,7 @@ class HoldQueue:
             self._log(call, "caller_message", "New information received")
             if mode == "fifo":
                 call.source = "none"
-                self._speak(call, "Your message is recorded. Calls are being answered in arrival order; please stay on the line.")
+                self._desk(call, "fifo")
                 self._save()
                 return call
             dialogue = copy.deepcopy(call.dialogue)
@@ -244,7 +265,7 @@ class HoldQueue:
                     call.attention = call.error
                     if call.tier != Tier.IMMEDIATE:
                         call.tier = Tier.UNKNOWN
-                    self._speak(call, "I could not process that message. It has been saved for an operator; you remain in the queue.")
+                    self._desk(call, "failed_turn")
                     self._log(call, "interview_error", call.error)
                     self._save()
             raise
@@ -266,18 +287,21 @@ class HoldQueue:
             if turn.review:
                 call.attention = f"{call.attention}; {turn.review}" if call.attention else turn.review
                 self._log(call, "review_flag", turn.review)
+            if turn.language:
+                call.language = language_of(turn.language)
+            if turn.distress:
+                call.distress = turn.distress
             if old_tier != call.tier:
                 self._log(call, "tier_changed", f"{old_tier.value} -> {call.tier.value}: " + "; ".join(result.extraction.evidence))
             x = call.extraction
             if call.tier == Tier.IMMEDIATE and old_tier != Tier.IMMEDIATE:
-                self._speak(call, f"If you or someone with you is in danger right now, call {EMERGENCY_NUMBER} now. "
-                            "Your report has also been flagged for an operator.")
+                self._desk(call, "emergency")
             if x.incident_kind != "none" and x.location and old_report != (x.incident_kind, x.location):
-                self._speak(call, "Your incident report and stated location have been recorded. This does not confirm that responders have been dispatched.")
+                self._desk(call, "incident")
             if turn.question:
                 self._speak(call, turn.question, turn.topic)
             else:
-                self._speak(call, "Your information is saved. You can keep waiting for an operator and tell me if anything changes.", "wait")
+                self._speak(call, line(call.profile, "saved_wait", call.language), "wait")
             self._save()
             return call
 
@@ -289,12 +313,12 @@ class HoldQueue:
             call.silence_count += 1
             call.last_activity = self.now()
             if call.silence_count == 1:
-                self._speak(call, "I have not received a response. If you can, tell me what is happening. You may also keep waiting for a person.")
+                self._desk(call, "silence_1")
             else:
                 if call.tier != Tier.IMMEDIATE:
                     call.tier = Tier.UNKNOWN
                 call.attention = "No response after a check-in; human review required"
-                self._speak(call, "You remain in the queue. I have marked this call for an operator to check.")
+                self._desk(call, "silence_2")
             self._log(call, "silence", f"Check-in {call.silence_count}")
             self._save()
             return call
@@ -311,7 +335,7 @@ class HoldQueue:
             call.status, call.operator_id = "connecting", operator_id
             call.transfer_id = uuid.uuid4().hex
             call.version += 1
-            self._speak(call, "An operator is available and a handoff is being arranged. Please stay on the line.")
+            self._desk(call, "reserved")
             self._log(call, "handoff_reserved", operator_id)
             self._save()
             return call
@@ -323,7 +347,7 @@ class HoldQueue:
                 raise Conflict("Transfer is no longer pending")
             if success:
                 call.status, call.ended_at = "handed_off", self.now()
-                self._speak(call, "The operator has taken over this conversation.")
+                self._desk(call, "confirmed")
                 self.handoffs.append(Handoff(call.call_id, call.tier, self.now() - call.arrival,
                                             self.summary(call), list(call.transcript), call.extraction, self.now(),
                                             copy.deepcopy(call.dialogue), call.operator_id))
@@ -331,7 +355,7 @@ class HoldQueue:
             else:
                 call.status = "waiting"
                 call.transfer_id = call.operator_id = ""
-                self._speak(call, "The handoff did not complete. You are still waiting with your original arrival time and information.")
+                self._desk(call, "failed")
                 self._log(call, "handoff_failed", "Returned to queue without changing arrival")
             self._save()
             return call
@@ -414,7 +438,7 @@ class HoldQueue:
                            summary=self.summary(call))
                 rows.append(row)
             by_id = {c["call_id"]: c for c in rows}
-            return copy.deepcopy({"mode": self.mode, "active_policy": self.active_policy,
+            return copy.deepcopy({"mode": self.mode, "profile": self._profile, "active_policy": self.active_policy,
                 "waiting": [by_id[c.call_id] for c in self.order(self.active_policy)], "calls": rows,
                 "clusters": self.clusters(), "handoffs": [_encode(h) for h in self.handoffs[-20:]],
                 "departed": [asdict(d) for d in self.departed[-20:]], "events": self.events[-100:],

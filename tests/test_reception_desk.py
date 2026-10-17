@@ -377,3 +377,44 @@ def test_a_priority_caller_who_hangs_up_gets_a_callback_task():
     q.say(call.call_id, "my oxygen runs out tonight", responder=lambda *_: result(Tier.PRIORITY))
     q.hang_up(call.call_id)
     assert call.callback_status == "pending_review"
+
+
+def test_the_china_profile_welcomes_in_mandarin_with_local_numbers():
+    q = HoldQueue(1800, mode="rules", profile="cn-12345")
+    welcome = q.add().dialogue[0]["text"]
+    assert "排队" in welcome and all(number in welcome for number in ("110", "119", "120"))
+
+
+def test_a_mandarin_caller_hears_the_desk_lines_in_mandarin_with_the_profile_number():
+    q = HoldQueue(1800)
+    call = q.add()
+    turn = result(Tier.IMMEDIATE)
+    q.say(call.call_id, "我邻居倒在地上，没有呼吸了", responder=lambda *_: ReceptionTurn(turn.classification, "location", "请问在哪里？", language="zh-CN"))
+    emergency = next(t["text"] for t in call.dialogue if "911" in t["text"] and t["topic"] == "status")
+    assert call.language == "zh" and "拨打" in emergency
+
+
+def test_switching_the_profile_keeps_waiting_calls_on_their_own_profile():
+    q = HoldQueue(1800)
+    early = q.add()
+    q.profile = "cn-12345"
+    late = q.add()
+    assert (early.profile, late.profile) == ("la-211", "cn-12345")
+    with pytest.raises(ValueError):
+        q.profile = "mars-1"
+
+
+def test_restart_restores_the_profile_and_each_callers_language(tmp_path):
+    path = tmp_path / "queue.sqlite3"
+    q = HoldQueue(1800, db_path=path, profile="cn-12345")
+    call = q.add()
+    q.say(call.call_id, "需要帮助", responder=lambda *_: ReceptionTurn(result(Tier.PRIORITY).classification, "need", "需要什么？", language="zh"))
+    restored = HoldQueue(1800, db_path=path)
+    assert restored.profile == "cn-12345" and restored.call(call.call_id).language == "zh"
+
+
+def test_api_switches_profiles_and_rejects_unknown_ones():
+    client = TestClient(app)
+    state = client.post("/profile", json={"profile": "cn-12345"}).json()
+    assert state["profile"] == "cn-12345" and {p["key"] for p in state["profiles"]} == {"la-211", "cn-12345"}
+    assert client.post("/profile", json={"profile": "mars-1"}).status_code == 422

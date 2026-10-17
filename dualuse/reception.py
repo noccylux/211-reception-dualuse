@@ -89,6 +89,9 @@ def model_turn(dialogue: list[dict], facts: str = "", client=None) -> ReceptionT
     result = AgentTurn.model_validate_json(block.text)
     extraction, review = _checked(result.extraction, dialogue)
     reply = result.reply.strip()
+    if PROMISES.search(reply):
+        review = "; ".join(filter(None, [review, f"Reply withheld because it made a promise: {reply}"]))
+        reply = ""
     if not reply or len(reply) > MAX_REPLY:
         reply = fallback_question(result.topic, result.language_code)
     return ReceptionTurn(Classification(extraction, fields_to_tier(extraction), "model"), result.topic, reply,
@@ -96,10 +99,42 @@ def model_turn(dialogue: list[dict], facts: str = "", client=None) -> ReceptionT
 
 
 _QUOTES = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"'})
+# Promises the desk cannot keep: dispatch, a place in line, or that no emergency call is needed.
+PROMISES = re.compile(r"on (?:the|their) way|been dispatched|being dispatched|help is coming|you are next|"
+                      r"no need to call|en camino|ya van|no necesita llamar|已经出动|正在赶来|马上就到|不用打|不需要拨打",
+                      re.IGNORECASE)
+ABBREVIATIONS = {"ave": "avenue", "st": "street", "rd": "road", "blvd": "boulevard", "dr": "drive",
+                 "ln": "lane", "apt": "apartment", "hwy": "highway"}
+_CJK = re.compile(r"[぀-ヿ㐀-鿿가-힯]")
 
 
 def _normalized(text: str) -> str:
     return " ".join(text.casefold().translate(_QUOTES).split())
+
+
+def _covered(token: str, compact: str) -> bool:
+    """A CJK token is supported when it splits into runs of at least two characters found in the caller's text."""
+    start = 0
+    while start < len(token):
+        end = max((stop for stop in range(start + 1, len(token) + 1) if token[start:stop] in compact), default=start)
+        if end - start < min(2, len(token) - start):
+            return False
+        start = end
+    return True
+
+
+def _location_supported(location: str, caller_text: str) -> bool:
+    """Every word of the location is a caller word (or its street abbreviation); CJK runs are matched as text."""
+    words = set(re.findall(r"\w+", caller_text))
+    expanded = words | {ABBREVIATIONS[w] for w in words if w in ABBREVIATIONS}
+    compact = re.sub(r"[\W_]+", "", caller_text)
+    for token in re.findall(r"\w+", _normalized(location)):
+        if _CJK.search(token):
+            if not _covered(token, compact):
+                return False
+        elif token not in expanded and ABBREVIATIONS.get(token) not in expanded:
+            return False
+    return True
 
 
 def _checked(extraction: Extraction, dialogue: list[dict]) -> tuple[Extraction, str]:
@@ -112,7 +147,7 @@ def _checked(extraction: Extraction, dialogue: list[dict]) -> tuple[Extraction, 
         notes.append("Unverified quotes dropped: " + "; ".join(unverified))
     location = extraction.location
     # A location may combine short answers ("Oak Street", "number 12"); every part must come from the caller.
-    if location and not all(token in caller_text for token in re.findall(r"\w+", _normalized(location))):
+    if location and not _location_supported(location, caller_text):
         notes.append(f"Location not in the caller's words, dropped: {location}")
         location = None
     if extraction.life_threat_now and not verified:
@@ -120,16 +155,23 @@ def _checked(extraction: Extraction, dialogue: list[dict]) -> tuple[Extraction, 
     return extraction.model_copy(update={"evidence": verified, "location": location}), "; ".join(notes)
 
 
-SCRIPTS = (  # (language code, English name, character range) for scripts the English keywords cannot read
-    ("zh", "Chinese", "一-鿿"), ("ko", "Korean", "가-힯"), ("ja", "Japanese", "぀-ヿ"),
+SCRIPTS = (  # (language code, English name, characters) the English keywords cannot read; kana before Han
+    ("ja", "Japanese", "぀-ヿ"), ("zh", "Chinese", "一-鿿"), ("ko", "Korean", "가-힯"),
     ("ar", "Arabic", "؀-ۿ"), ("hy", "Armenian", "԰-֏"), ("ru", "Russian", "Ѐ-ӿ"),
 )
+SPANISH = re.compile(r"[¿¡ñ]|\b(?:ayuda|por favor|necesito|tengo|estamos|hay|humo|fuego|casa|no podemos)\b", re.IGNORECASE)
+
+
+def _unreadable(message: str) -> tuple[str, str] | None:
+    found = next(((code, name) for code, name, chars in SCRIPTS if re.search(f"[{chars}]", message)), None)
+    return found or (("es", "Spanish") if SPANISH.search(message) else None)
 
 
 def rules_turn(dialogue: list[dict]) -> ReceptionTurn:
     """Explicitly labeled English baseline; model mode never silently falls back to it."""
     text = "\n".join(t["text"] for t in dialogue if t["speaker"] == "caller")
-    unreadable = next(((code, name) for code, name, chars in SCRIPTS if re.search(f"[{chars}]", text)), None)
+    latest = next((t["text"] for t in reversed(dialogue) if t["speaker"] == "caller"), "")
+    unreadable = _unreadable(latest)
     if unreadable:
         code, name = unreadable
         review = f"{name} text: the offline English keyword mode cannot read it; a person who reads {name} should review"
@@ -151,7 +193,7 @@ def rules_turn(dialogue: list[dict]) -> ReceptionTurn:
     topic = next((item for item in candidates if item not in asked), "wait")
     if any(p in last for p in ("just wait", "stop asking", "wait for a person", "nothing else", "that's all")):
         topic = "wait"
-    return ReceptionTurn(result, topic, fallback_question(topic, "en"))
+    return ReceptionTurn(result, topic, fallback_question(topic, "en"), language="en")
 
 
 def receive(dialogue: list[dict], mode: str, facts: str) -> ReceptionTurn:

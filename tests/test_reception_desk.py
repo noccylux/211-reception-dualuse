@@ -476,3 +476,46 @@ def test_offline_mode_flags_a_language_it_cannot_read_and_answers_in_it():
     q.say(call.call_id, "我们被困在楼里了")
     assert call.tier == Tier.UNKNOWN and "Chinese" in call.attention and "offline" in call.attention
     assert call.language == "zh" and call.dialogue[-1]["text"].endswith("？")
+
+
+@pytest.mark.parametrize("texts, location, kept", [
+    (["It is 450 Maple Ave. There are flames"], "450 Maple Avenue", True),
+    (["金水区", "花园路88号，有火"], "金水区花园路88号", True),
+    (["Fire at the corner of 5th and Main Street"], "5 Main Street", False),
+    (["Oak and 3rd, I just saw flames"], "3 Oak St", False),
+])
+def test_the_location_check_uses_whole_words_and_street_abbreviations(texts, location, kept):
+    turn = model_turn(caller(*texts), client=FakeClient(interview([], life=False, location=location)))
+    assert (turn.classification.extraction.location == location) is kept
+
+
+@pytest.mark.parametrize("reply", ["Firefighters are on the way, and you are next in line, so there is no need to call 911.",
+                                   "La ayuda ya va en camino.", "消防员已经出动，马上就到。"])
+def test_a_reply_that_promises_help_or_a_place_is_withheld_for_review(reply):
+    turn = model_turn(caller("my neighbor is not breathing"), client=FakeClient(interview(["not breathing"], reply=reply)))
+    assert turn.reply != reply and turn.reply.endswith(("?", "？")) and "promise" in turn.review
+
+
+def test_offline_mode_answers_an_english_caller_in_english_on_the_china_profile():
+    q = HoldQueue(1800, mode="rules", profile="cn-12345")
+    call = q.add()
+    q.say(call.call_id, "My house is on fire and my son is trapped upstairs")
+    assert call.tier == Tier.IMMEDIATE and call.language == "en"
+    assert any("call 110" in t["text"] for t in call.dialogue)
+
+
+def test_offline_mode_follows_the_language_of_the_latest_message():
+    q = HoldQueue(1800, mode="rules")
+    call = q.add()
+    q.say(call.call_id, "你好")
+    q.say(call.call_id, "Someone is shouting for help inside")
+    assert call.tier == Tier.IMMEDIATE and call.language == "en" and call.dialogue[-1]["text"].endswith("?")
+
+
+@pytest.mark.parametrize("text, name, code", [("火事です。助けてください", "Japanese", "ja"),
+                                              ("Hay humo en el pasillo y no podemos salir.", "Spanish", "es")])
+def test_offline_mode_names_japanese_and_spanish_it_cannot_read(text, name, code):
+    q = HoldQueue(1800, mode="rules")
+    call = q.add()
+    q.say(call.call_id, text)
+    assert name in call.attention and call.language == code

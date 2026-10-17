@@ -29,6 +29,23 @@ Required by the rules. Add each tool when it is first used.
 | Claude API (Anthropic SDK, `claude-haiku-5-5`) | The reception agent's replies in the caller's language from playbooks, and structured caller-field extraction; code controls tier rules, emergency referrals and handoff |
 | Retell AI | Phone numbers, speech-to-text and text-to-speech for voice callers; the desk's own logic produces every reply (branch `voice-retell-bridge`) |
 
+Third-party code: `crisisfusion_map/` is the CrisisFusion map plugin 1.0.0,
+written by a classmate as a separate demo. We translated its UI strings to
+English and changed one test path; we then generalized its LA County
+boundary into a host-chosen service area (boundary, view, geocoder, feeds),
+added an OpenStreetMap Nominatim geocoder for areas outside the US and an
+out-of-area marker. Leaflet 1.9.4 (BSD-2-Clause) ships inside it.
+
+`crisisfusion_scoring/` is the CrisisFusion scoring plugin 1.0.0 by the same
+classmate (deterministic English/Spanish rules, 0–100 Human Attention Index),
+vendored unchanged. It runs as a shadow second opinion beside our tier and
+never changes a tier or the queue order.
+
+Before submitting, name the author of both plugins and list the AI tools they used.
+
+Boundary data: Shanghai Municipality (the example city for the 12345 profile) from OpenStreetMap contributors (ODbL),
+relation 913067 via Nominatim; LA County from LA County GIS.
+
 ## Pitch outline (5 minutes)
 
 1. The problem in LA, in one concrete scene.

@@ -20,6 +20,8 @@ dist/
 
 # Local data, model weights and scratch output
 data/
+# The vendored map plugin's county boundary and source list are code assets.
+!/crisisfusion_map/data/
 *.pth
 *.pt
 *.safetensors

@@ -11,12 +11,32 @@ from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
+class MapArea:
+    """The line's service area on the incident map. Real lines route by jurisdiction,
+    so a call located outside this area is flagged for transfer, not answered here."""
+    name: str
+    boundary: str  # GeoJSON in crisisfusion_map/data; source and sha256 in geo_sources.json
+    attribution: str
+    view: tuple[float, float, int]  # lat, lon, zoom
+    geocoder: str  # "census" covers US addresses only; "nominatim" (OpenStreetMap) elsewhere
+    feeds: tuple[str, ...]  # official feeds the plugin fetches on manual refresh
+    locality: str  # regex for wording that names the area's city or postal code
+    nws_zone: str = ""  # county UGC code, needed only with the NWS feed
+
+    def spec(self) -> dict:
+        spec = {"name": self.name, "boundary": self.boundary, "attribution": self.attribution, "view": list(self.view),
+                "geocoder": self.geocoder, "providers": list(self.feeds), "locality": self.locality}
+        return {**spec, "nws_zone": self.nws_zone} if self.nws_zone else spec
+
+
+@dataclass(frozen=True)
 class Profile:
     key: str
     name: str
     languages: tuple[str, ...]
     emergency: dict[str, str] = field(hash=False)  # by language code
     address_hint: str
+    map_area: MapArea
     welcome_extra: str = ""  # invites callers who prefer another profile language
 
 
@@ -27,6 +47,9 @@ PROFILES = {
         languages=("en", "es", "zh"),
         emergency={"en": "911", "es": "911", "zh": "911"},
         address_hint="US street address: number, street, city; or a cross street or landmark",
+        map_area=MapArea(name="Los Angeles County", boundary="la_county.geojson", attribution="LA County GIS (simplified)",
+                         view=(34.1, -118.2, 9), geocoder="census", feeds=("nws", "usgs"), nws_zone="CAC037",
+                         locality=r"\b(?:Los Angeles|LA County|Santa Monica|Long Beach|Pasadena|CA|California|9\d{4})\b|洛杉矶|加州"),
         welcome_extra="Para español, hable o escriba en español. 如需中文服务，请直接说中文或输入中文。",
     ),
     "cn-12345": Profile(
@@ -36,6 +59,12 @@ PROFILES = {
         emergency={"zh": "110（报警）、119（火警）或 120（急救）",
                    "en": "110 (police), 119 (fire) or 120 (ambulance)"},
         address_hint="Chinese address order: district, road, number, residential compound, building, unit",
+        # Shanghai is an example city for the demo, not derived from any data: callers can be anywhere.
+        # NWS covers the US only; USGS reports earthquakes world-wide. Census does not geocode China.
+        map_area=MapArea(name="Shanghai Municipality (example city)", boundary="shanghai.geojson",
+                         attribution="OpenStreetMap contributors (ODbL), simplified; not an official administrative boundary",
+                         view=(31.23, 121.47, 9), geocoder="nominatim", feeds=("usgs",),
+                         locality=r"上海|\bShanghai\b|\b20\d{4}\b"),
         welcome_extra="For English, please speak or type in English.",
     ),
 }

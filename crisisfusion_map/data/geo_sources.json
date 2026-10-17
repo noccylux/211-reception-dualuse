@@ -1,0 +1,31 @@
+{
+  "downloaded_at_utc": "2026-10-17T16:35:10.359317+00:00",
+  "boundary_source": "https://arcgis.gis.lacounty.gov/arcgis/rest/services/DRP/ZNET_Public/MapServer/0",
+  "boundary_query": "https://arcgis.gis.lacounty.gov/arcgis/rest/services/DRP/ZNET_Public/MapServer/0/query?where=OBJECTID%3D120&outFields=*&outSR=4326&f=geojson&maxAllowableOffset=0.0001&geometryPrecision=5",
+  "bbox": [
+    -118.9447,
+    32.7996,
+    -117.64639,
+    34.8233
+  ],
+  "points": 5011,
+  "sha256": "81c8bdcd598dcc669b33c45d99afc77914c2ac53cca4e42c8fe988e47be09d7a",
+  "leaflet_version": "1.9.4",
+  "leaflet_integrity": "Both JS and CSS match published official SRI SHA256 values",
+  "leaflet_source": "https://leafletjs.com/download.html",
+  "shanghai": {
+    "file": "shanghai.geojson",
+    "downloaded_at_utc": "2026-10-17T20:16:30Z",
+    "boundary_source": "https://www.openstreetmap.org/relation/913067",
+    "boundary_query": "https://nominatim.openstreetmap.org/lookup?osm_ids=R913067&format=geojson&polygon_geojson=1&polygon_threshold=0.002",
+    "licence": "OpenStreetMap contributors, ODbL 1.0; not an official administrative boundary",
+    "bbox": [
+      120.8508584,
+      30.6693672,
+      123.225706,
+      31.8720185
+    ],
+    "points": 306,
+    "sha256": "4af179231eb37e86d96dda2fea025499d773693f77183570806aaa4771ed6178"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "id": "crisisfusion-scoring",
+  "version": "1.0.0",
+  "api_version": "1",
+  "python_package": "crisisfusion_scoring",
+  "factory": "crisisfusion_scoring:create_app",
+  "cli": "python -m crisisfusion_scoring --port 8811 --db work/scoring.sqlite3",
+  "ui_entry": "/",
+  "health_entry": "/health",
+  "api_base": "/api/scoring",
+  "status_entry": "/api/scoring/status",
+  "csrf_header": "X-CrisisFusion-Scoring",
+  "default_bind": "127.0.0.1:8811",
+  "mount_prefix_supported": true,
+  "other_plugins_required": [],
+  "external_services": [],
+  "api_key_required": false,
+  "persistence": "SQLite, plugin-owned database, single process",
+  "input": "call_id, revision, cumulative caller text, language, optional declared location",
+  "output": "per-call priority_assessment, unresolved needs, queue_calls, audit",
+  "limitations": ["Prototype rules; not a probability or emergency dispatch standard", "Finite English/Spanish rules; unsupported language requires human review", "Transfer/callback actions are simulated"]
+}

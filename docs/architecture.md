@@ -1,7 +1,7 @@
 # Architecture: 211 reception desk
 
-Current behavior on the staging branch `codex/demo-integration-20261017`,
-integrated Sat 2026-10-17; promotion to `main` awaits the campus demo finishing.
+Current behavior of the integrated release for `main`,
+released Sat 2026-10-17 after the user confirmed the campus demonstration finished.
 A local prototype, not a telephone switch
 or emergency dispatch system; English phone calls reach it only through the
 Retell voice bridge ([voice.md](voice.md)), labeled origin `phone`. Design and history: change records

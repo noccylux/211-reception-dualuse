@@ -79,19 +79,23 @@ carry more weight.
 
 ## Tracks and partners
 
-One problem, taken down one of four tracks plus one revealed on Friday. Each
-track's winner is chosen from the seven finalists.
+One problem, taken down one of four tracks; a team picks its track (lens) at
+submission. Each track's winner is chosen from the seven finalists. There is
+no fifth track: the Participant Hub's "five lenses" (saved Fri 2026-10-16
+18:54) are these four plus Best Build with IBM Bob, which is open to every
+track. Track text and sponsor criteria are in
+[problem/brief.md](problem/brief.md#tracks).
 
-| Track | Partner | Prize | Partner resources |
-|---|---|---|---|
-| Crisis Mitigation | NULL Systems | Internship interview per teammate, 45 min with founders | Run the build in their autonomy sim |
-| Energy Independence and Grid Hardening | Base Power | Trophy + $200, fast-track interview or office hours | |
-| Resilience Comms | Retell AI | Trophy + $200, fast-track interviews | $10 Retell credit per innovator for voice agents |
-| Ports and Logistics | Terminal49 | Trophy + $200, fast-track interview | Live data on 1M+ containers via the Terminal49 API |
-| (revealed Fri) | | | |
+| Track (lens) | Reveal-page name | Partner | Prize | Partner resources |
+|---|---|---|---|---|
+| Crisis Mitigation | Marine: Under the Water | NULL Systems (Hub: NULL Labs) | Internship interview per teammate, 45 min with founders | Run the build in their autonomy sim |
+| Energy Independence and Grid Hardening | Energy: On the Grid | Base Power | Trophy + $200, fast-track interview or office hours | |
+| Resilience Comms | Communication: On the Line | Retell AI | Trophy + $200, fast-track interviews | $10 Retell credit per innovator for voice agents |
+| Ports and Logistics | Ports: At the Gate | Terminal49 | Trophy + $200, fast-track interview | Live data on 1M+ containers via the Terminal49 API |
 
-Open to every track: Best Build with IBM Bob (IBM office visit; IBM Bob free
-for 30 days at <https://ibm.biz/university-bob>).
+Open to every track, stacking with a track prize: Best Build with IBM Bob
+(IBM office visit; IBM Bob free for 30 days at
+<https://ibm.biz/university-bob>).
 
 ## Prizes
 

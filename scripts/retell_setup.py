@@ -48,7 +48,14 @@ def main():
     print(f"LLM websocket: wss://{urlsplit(websocket_url).netloc}/llm-websocket/<RETELL_WS_SECRET>")
     print(f"Webhook:       {webhook_url}")
 
-    bound = [(number, agent) for number in client.phone_number.list()
+    numbers, key = [], None
+    while True:
+        page = client.phone_number.list(**({"pagination_key": key} if key else {}))
+        numbers += page.items
+        if not page.has_more:
+            break
+        key = page.pagination_key
+    bound = [(number, agent) for number in numbers
              for agent in number.inbound_agents or [] if agent.agent_id == agent_id]
     for number, agent in bound:
         print(f"Inbound number {number.phone_number_pretty or number.phone_number} -> agent version {agent.agent_version or 'default'}")

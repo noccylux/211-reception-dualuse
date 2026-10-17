@@ -20,7 +20,8 @@ caller phone ─► Retell (number, speech-to-text, text-to-speech)
   desk, the queue order and the incident reports like a typed one.
 * The desk decides what the caller hears. The bridge adds only fixed lines:
   a demo-line notice before the welcome, "Okay." while a turn is processed,
-  and an operator-pickup notice when the operator reserves the call.
+  an operator-pickup notice when the operator reserves the call, and a short
+  "still here" notice in place of a desk reply identical to the previous one.
 * Retell silence reminders become desk silence events. A `call_ended`
   webhook with reason `user_hangup` becomes a hang-up; any other reason, or
   no webhook within 15 s of the socket closing, becomes a lost connection.

@@ -24,7 +24,8 @@ DEMO_NOTICE = "This is a hackathon demonstration line, not a real 211 service."
 ACK = "Okay."
 HANDOFF = ("An operator now has your case on the demo console. "
            "Voice transfer to a person is not connected in this demo, so please stay on the line.")
-NOT_RECORDED = "I could not record that. You remain in the queue."
+STILL_HERE = "I'm still here, and you remain in the queue."
+NOT_RECORDED ="I could not record that. You remain in the queue."
 DESK_DOWN = "The reception system is having a problem right now. You have not been removed from the queue."
 SIGNATURE = re.compile(r"v=(\d+),d=([0-9a-f]+)")
 
@@ -46,6 +47,7 @@ class Line:
         self.spoken = spoken  # desk dialogue entries already accounted for
         self.forwarded = 0  # caller transcript entries already sent to the desk
         self.pending: list[str] = []
+        self.last_desk_speech = ""
         self.response_id = 0
         self.status = "waiting"
         self.interrupts = 0
@@ -105,8 +107,13 @@ def create_app(desk: httpx.AsyncClient, ws_secret: str, retell_api_key: str, *,
                 if line.pending:
                     line.spoken = len(call["dialogue"])  # the caller said more; this reply is stale
                     continue
+                speech = new_speech(line, call)
+                # Recognizer fragments ("ok", "yeah") make the desk repeat its wait line; on a
+                # phone that sounds like a loop, so a repeat becomes a short notice.
+                repeated = speech == line.last_desk_speech
+                line.last_desk_speech = speech
                 # Text that arrives while this reply is sent is picked up by the loop.
-                await line.respond(new_speech(line, call))
+                await line.respond(STILL_HERE if repeated else speech)
         except Exception:
             log.exception("voice turn failed for %s", line.desk_id)
             await line.respond(DESK_DOWN)

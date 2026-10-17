@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from dualuse import api, reception
-from dualuse.voice_bridge import ACK, DEMO_NOTICE, DESK_DOWN, HANDOFF, create_app, verify_signature
+from dualuse.voice_bridge import ACK, DEMO_NOTICE, DESK_DOWN, HANDOFF, STILL_HERE, create_app, verify_signature
 
 SECRET = "ws-secret"
 KEY = "retell-key"
@@ -154,6 +154,20 @@ def test_speech_during_a_running_turn_is_sent_after_it_and_only_the_latest_reply
         last_caller = max(i for i, t in enumerate(call["dialogue"]) if t["speaker"] == "caller")
         assert reply["content"] == assistant_texts(call, last_caller + 1)
         assert call["error"] == ""
+
+
+def test_a_desk_reply_identical_to_the_previous_one_is_replaced_by_a_short_notice(bridge, desk):
+    with connect(bridge) as ws:
+        opened(ws)
+        ws.send_json(turn(1, "I need food. That's all"))
+        first = final_response(ws)["content"]
+        ws.send_json(turn(2, "I need food. That's all", "nothing else"))
+        second = final_response(ws)
+        ws.send_json(turn(3, "I need food. That's all", "nothing else", "ok that's all"))
+        third = final_response(ws)
+        replies = [t["text"] for t in only_call(desk)["dialogue"] if t["speaker"] == "assistant"][-3:]
+        assert replies[0] == replies[1] == replies[2] == first  # precondition: the desk repeats itself
+        assert second["content"] == third["content"] == STILL_HERE
 
 
 def test_a_silence_reminder_is_recorded_and_the_check_in_is_spoken(bridge, desk):

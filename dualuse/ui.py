@@ -146,6 +146,24 @@ def operator_panel():
     metrics[1].metric("Immediate", sum(c["tier"] == "immediate" for c in state["waiting"]))
     metrics[2].metric("Needs review", sum(bool(c["attention"]) for c in state["calls"] if c["status"] == "waiting"))
     metrics[3].metric("Callback tasks", sum(c["callback_status"] == "pending_review" for c in state["calls"]))
+    with st.expander("Demo surge: inject callers (simulated arrivals)"):
+        st.caption("Scripts are team-written callers (simulated). Messages are real disaster SMS from the Munro "
+                   "dataset (Haiti 2010, Sandy, Pakistan floods; English translation) used as first messages, not "
+                   "211 calls. The Austin pattern time-compresses real APD 911 dispatch timestamps.")
+        cols = st.columns(4)
+        count = cols[0].number_input("Callers", 1, 60, 20, key="surge_count")
+        source = cols[1].selectbox("Content", ["mixed", "scripts", "messages"], key="surge_source")
+        pattern = cols[2].selectbox("Arrivals", ["austin", "even"], key="surge_pattern")
+        span = cols[3].number_input("Over seconds", 0, 600, 60, key="surge_span")
+        if st.button("Inject surge", key="surge_start"):
+            call_api("POST", "/demo/surge", json={"count": int(count), "source": source, "pattern": pattern,
+                                                  "span_s": float(span), "seed": 7})
+        surge = call_api("GET", "/demo/surge")
+        if surge.get("planned"):
+            st.caption(f"Surge {'running' if surge['running'] else 'finished'}: {surge['joined']} of {surge['planned']} "
+                       f"callers joined, {surge['turns']} caller turns")
+            for error in surge["errors"]:
+                st.error(literal(error))
     operator = st.selectbox("Operator seat", ["operator-1", "operator-2", "operator-3"])
     busy = any(c["operator_id"] == operator and c["status"] in ("connecting", "handed_off") for c in state["calls"])
     if st.button("Available: reserve next caller", type="primary", disabled=busy or not state["waiting"]):
@@ -174,7 +192,8 @@ def operator_panel():
     if state["waiting"]:
         st.dataframe([{"call": c["call_id"], "tier": c["tier"], "wait": fmt_wait(c["waited_s"]),
                        "FIFO position": c["fifo_position"] + 1, "tiered position": c["tiered_position"] + 1,
-                       "processing": c["processing"], "review": c["attention"]} for c in state["waiting"]], hide_index=True)
+                       "language": c["language"], "processing": c["processing"], "review": c["attention"],
+                       "origin": c["origin"]} for c in state["waiting"]], hide_index=True)
     for call in state["waiting"]:
         with st.expander(tier_line(call)):
             st.caption(f"Waiting {fmt_wait(call['waited_s'])} · source: {call['source']} · "

@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 from dualuse.config import ROOT
 from dualuse import extract
 from dualuse.holdqueue import Conflict, HeldCall, HoldQueue
+from dualuse.live_surge import arrival_offsets, plan_surge, start_surge
 from dualuse.profiles import PROFILES
 from dualuse.samples import SAMPLES
 from dualuse.surge import SurgeSpec, three_policy_comparison
@@ -37,6 +38,7 @@ def default_mode() -> Mode:
 
 
 QUEUE = HoldQueue(MAX_NORMAL_WAIT_S, db_path=Path(os.environ.get("DUALUSE_QUEUE_DB", str(ROOT / ".tmp/211-queue.sqlite3"))), mode=default_mode())
+SURGE: dict = {}  # the running or last demo surge: its thread and progress counters
 
 
 @app.exception_handler(Conflict)
@@ -65,6 +67,14 @@ class ModeChange(BaseModel):
 
 class Reset(BaseModel):
     mode: Mode | None = None
+
+
+class SurgeRequest(BaseModel):
+    count: int = Field(ge=1, le=60)
+    source: Literal["mixed", "scripts", "messages"]
+    pattern: Literal["even", "austin"]
+    span_s: float = Field(ge=0, le=600)
+    seed: int
 
 
 class ProfileChange(BaseModel):
@@ -226,6 +236,31 @@ def change_mode(body: ModeChange) -> dict:
 def change_profile(body: ProfileChange) -> dict:
     QUEUE.profile = body.profile
     return state()
+
+
+def surge_status() -> dict:
+    running = bool(SURGE.get("thread") and SURGE["thread"].is_alive())
+    return {**{k: v for k, v in SURGE.items() if k != "thread"}, "running": running}
+
+
+@app.post("/demo/surge")
+def demo_surge(body: SurgeRequest) -> dict:
+    """Simulated arrivals into the live desk; each call carries its origin label."""
+    if surge_status()["running"]:
+        raise HTTPException(409, "A demo surge is already running")
+    try:
+        callers = plan_surge(body.count, body.source, body.seed)
+        offsets = arrival_offsets(len(callers), body.span_s, body.pattern, body.seed)
+    except FileNotFoundError as error:
+        raise HTTPException(409, f"Dataset missing: {error}") from error
+    SURGE.clear()
+    SURGE["thread"] = start_surge(QUEUE, callers, offsets, status=SURGE)
+    return surge_status()
+
+
+@app.get("/demo/surge")
+def get_surge() -> dict:
+    return surge_status()
 
 
 @app.post("/reset")

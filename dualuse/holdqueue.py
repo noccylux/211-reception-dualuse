@@ -48,6 +48,7 @@ class HeldCall:
     profile: str = "la-211"
     language: str = "en"  # primary language subtag; desk lines follow it
     distress: str = "unknown"
+    origin: str = "live"  # or the label of an injected demo caller (simulated script, recorded message)
 
 
 @dataclass(frozen=True)
@@ -206,7 +207,7 @@ class HoldQueue:
     def call(self, call_id: str) -> HeldCall:
         return self._calls[call_id]
 
-    def add(self, call_id: str | None = None) -> HeldCall:
+    def add(self, call_id: str | None = None, origin: str = "live") -> HeldCall:
         with self._lock:
             if call_id is None:
                 self._counter += 1
@@ -214,7 +215,7 @@ class HoldQueue:
             if call_id in self._calls:
                 raise ValueError(f"call {call_id} already exists")
             call = HeldCall(call_id, self.now(), last_activity=self.now(), profile=self._profile,
-                            language=PROFILES[self._profile].languages[0])
+                            language=PROFILES[self._profile].languages[0], origin=origin)
             self._calls[call_id] = call
             ahead = [c.call_id for c in self.order(self.active_policy)].index(call_id)
             self._speak(call, welcome(call.profile, call.language, ahead, reorders=self.active_policy != "fifo"), "welcome")

@@ -84,3 +84,16 @@ def test_the_operator_card_shows_the_callers_language_and_distress(desk):
     app = run_app()
     app.sidebar.radio[0].set_value("Operator desk").run()
     assert any("language: zh" in caption.value and "distress:" in caption.value for caption in app.caption)
+
+
+def test_the_operator_desk_injects_a_labeled_surge(desk):
+    queue, _ = desk
+    app = run_app()
+    app.sidebar.radio[0].set_value("Operator desk").run()
+    app.selectbox(key="surge_source").set_value("scripts")
+    app.number_input(key="surge_span").set_value(0)
+    app.button(key="surge_start").click().run()
+    from dualuse import api
+    api.SURGE["thread"].join(20)
+    calls = queue.snapshot()["calls"]
+    assert calls and all(c["origin"].startswith("simulated") for c in calls)

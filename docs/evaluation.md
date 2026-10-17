@@ -48,8 +48,9 @@ calls, so these numbers are not 211 accuracy.
 * Both methods run on the English translation and on the original text.
 * Desk changes are judged on the validation split (`--split validation`, same sampling), and the
   test split runs once afterwards. A validation run writes
-  `data/processed/eval_messages_validation.json`; only a test-split run writes the results block
+  `data/processed/eval_messages_validation_claude-haiku-5-5.json`; only a test-split run with the desk model writes the results block
   below and `data/processed/eval_messages.json`, which the simulator reads.
+* The script also supports `--split train` and `--model claude-sonnet-5-5` for comparisons. Non-published runs use `eval_messages_<split>_<model>.json` and each model has its own cache.
 * Raw Claude responses are cached by request in `data/processed/eval_messages_cache.jsonl`, so a
   rerun with unchanged playbooks replays the same answers through the current code for free. The
   evaluation client allows 60 s and three retries per request (the live desk: 20 s, none); latency

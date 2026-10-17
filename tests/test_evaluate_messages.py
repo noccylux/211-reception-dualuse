@@ -43,6 +43,23 @@ def test_load_messages_keeps_direct_test_messages_and_marks_the_subset(tmp_path)
     assert rows[0]["original"] == "Nou bezwen dlo" and rows[1]["original"] == ""
 
 
+def test_load_messages_reads_only_the_requested_split(tmp_path):
+    path = tmp_path / "validation.csv"
+    digest = write_csv(path, [{"id": 1, "message": "We need water", "request": 1, "split": "validation"},
+                              {"id": 2, "message": "Weather news", "request": 0}])
+    assert [r["id"] for r in evaluate_messages.load_messages(path, digest, split="validation")] == ["1"]
+    assert [r["id"] for r in evaluate_messages.load_messages(path, digest)] == ["2"]
+
+
+def test_a_message_without_english_is_kept_for_its_original_and_one_without_any_text_fails(tmp_path):
+    path = tmp_path / "test.csv"
+    digest = write_csv(path, [{"id": 1, "message": " ", "original": "Shikarpur", "request": 0}])
+    assert [(r["message"], r["original"]) for r in evaluate_messages.load_messages(path, digest)] == [("", "Shikarpur")]
+    digest = write_csv(path, [{"id": 2, "message": " ", "original": "", "request": 0}])
+    with pytest.raises(ValueError, match="message 2 has no text"):
+        evaluate_messages.load_messages(path, digest)
+
+
 def test_load_messages_keeps_one_copy_of_a_repeated_message(tmp_path):
     path = tmp_path / "test.csv"
     digest = write_csv(path, [{"id": 7, "message": "We can donate clothing", "request": 0}] * 2
@@ -72,7 +89,7 @@ def test_load_messages_rejects_a_request_label_outside_zero_and_one(tmp_path):
         evaluate_messages.load_messages(path, digest)
 
 
-def test_load_messages_reads_only_the_requested_split(tmp_path):
+def test_load_messages_accepts_a_positional_split(tmp_path):
     path = tmp_path / "validation.csv"
     digest = write_csv(path, [{"id": 1, "split": "validation", "message": "We need water", "request": 1},
                               {"id": 2, "message": "Weather news", "request": 0}])
@@ -102,11 +119,11 @@ def test_a_validation_run_leaves_the_test_results_and_the_docs_block_alone(tmp_p
     monkeypatch.setattr(evaluate_messages, "manifest_sha256", lambda p: digest if p == path else pytest.fail(f"read {p}"))
     monkeypatch.setattr(evaluate_messages, "DOC", doc)
     monkeypatch.setattr(evaluate_messages, "CachedClient",
-                        lambda cache: real_client(tmp_path / "cache.jsonl", lambda: Upstream(message(interview()))))
+                        lambda cache, model: real_client(tmp_path / "cache.jsonl", lambda: Upstream(message(interview())), model=model))
 
     evaluate_messages.main(["--split", "validation", "--per-class", "2", "--workers", "1"])
 
-    saved = json.loads(evaluate_messages.evaluation.RESULTS.with_name("eval_messages_validation.json").read_text(encoding="utf-8"))
+    saved = json.loads((tmp_path / "data/processed/eval_messages_validation_claude-haiku-5-5.json").read_text(encoding="utf-8"))
     assert saved["source"]["split"] == "validation" and "validation split" in saved["label"]
     model = [r for r in saved["rows"] if r["method"] == "model"]
     assert {r["tier"] for r in model} == {"immediate"}
@@ -207,6 +224,38 @@ def test_concurrent_identical_requests_reach_the_api_once(tmp_path):
     assert upstream.calls == 1
 
 
+def test_a_model_override_sends_and_caches_each_request_under_that_model(tmp_path):
+    models = []
+
+    class Recording(Upstream):
+        def create(self, **request):
+            models.append(request["model"])
+            return super().create(**request)
+
+    upstream = Recording(message(interview()))
+    path = tmp_path / "cache.jsonl"
+    evaluate_messages.CachedClient(path, lambda: upstream).messages.create(model="claude-haiku-5-5", messages=[])
+    sonnet = evaluate_messages.CachedClient(path, lambda: upstream, model="claude-sonnet-5-5")
+    sonnet.messages.create(model="claude-haiku-5-5", messages=[])
+    assert models == ["claude-haiku-5-5", "claude-sonnet-5-5"] and sonnet.sent == 1
+
+
+def test_only_the_test_split_with_the_desk_model_feeds_the_app_and_the_docs():
+    assert evaluate_messages.outputs("test", "claude-haiku-5-5") == (evaluate_messages.evaluation.RESULTS, True)
+    path, publish = evaluate_messages.outputs("validation", "claude-haiku-5-5")
+    assert not publish and path != evaluate_messages.evaluation.RESULTS and "validation" in path.name
+    assert evaluate_messages.outputs("test", "claude-sonnet-5-5")[1] is False
+    # Each model writes its own cache, so runs of two models can proceed at the same time.
+    assert evaluate_messages.cache_for("claude-haiku-5-5") == evaluate_messages.CACHE
+    assert evaluate_messages.cache_for("claude-sonnet-5-5") != evaluate_messages.CACHE
+
+
+def test_the_cost_uses_the_price_of_the_model_that_answered():
+    usage = {"input_tokens": 0, "output_tokens": 1_000_000, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}
+    assert evaluate_messages.cost(usage, "claude-haiku-5-5") == pytest.approx(0.50)
+    assert evaluate_messages.cost(usage, "claude-sonnet-5-5") == pytest.approx(10.0)
+
+
 def test_a_corrupt_cache_line_fails_loudly(tmp_path):
     path = tmp_path / "cache.jsonl"
     path.write_text('{"key": "abc", "response":\n', encoding="utf-8")
@@ -247,7 +296,7 @@ def test_the_results_block_reports_every_method_text_and_label():
     summaries = {m: {t: evaluate_messages.evaluation.summarize(rows) for t in ("english", "original")} for m in ("rules", "model")}
     summaries["fifo"] = {t: evaluate_messages.evaluation.fifo_summary(rows) for t in ("english", "original")}
     results = {
-        "label": evaluate_messages.LABEL.format(split="test"), "generated_at": "Sat 2026-10-17 13:30 PT", "summaries": summaries,
+        "label": evaluate_messages.label("test"), "generated_at": "Sat 2026-10-17 13:30 PT", "summaries": summaries,
         "source": {"split": "test", "messages": 1069, "needs": 422, "routine": 647, "subset": 83},
         "sample": {"seed": 7, "per_class": 150, "evaluated": 357, "subset_in_sample": 26, "with_english": 357, "with_original": 341,
                    "events": {"haiti_earthquake": 330}},
@@ -262,6 +311,9 @@ def test_the_results_block_reports_every_method_text_and_label():
     assert "| FIFO (reference) | English translation | 100% by construction | 0% by construction |" in block
     assert "| Claude model mode (claude-haiku-5-5) | Original text | 100.0% (1/1; " in block
     assert "`ht` 1" in block
+    results["desk"]["models_seen"], results["source"]["split"] = ["claude-sonnet-5-5"], "validation"
+    other = evaluate_messages.markdown(results)
+    assert "| Claude model mode (claude-sonnet-5-5) | Original text |" in other and "of the validation split" in other
 
 
 def test_the_docs_results_block_is_replaced_between_its_markers(tmp_path):

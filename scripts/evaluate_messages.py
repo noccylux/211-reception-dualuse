@@ -14,9 +14,13 @@ Claude's raw responses are cached by request, so a rerun with unchanged playbook
     bash scripts/uv-run.sh env -u ANTHROPIC_API_KEY python scripts/evaluate_messages.py [--split validation]
 
 `env -u` lets dualuse.config load the key from .env when WSLENV forwards an empty variable.
-The test split writes data/processed/eval_messages.json, which the simulator reads, and the results
-block of docs/evaluation.md. Iterate on the validation split: it writes
-data/processed/eval_messages_validation.json and leaves both alone.
+Writes data/processed/eval_messages.json and the results block of docs/evaluation.md.
+
+Playbook wording is tuned on the training split (`--split train`) and checked on the validation split,
+whose messages are not read while tuning; `--model claude-sonnet-5-5` asks a larger model the same
+requests for comparison. Those runs write data/processed/eval_messages_<split>_<model>.json and leave
+the app's results and the docs alone. From a worktree, add PYTHONPATH=. so Python imports that worktree's dualuse package rather than
+the editable install of the main checkout.
 """
 
 import argparse
@@ -42,20 +46,45 @@ from dualuse.holdqueue import HoldQueue
 from dualuse.live_surge import MESSAGES
 
 MANIFEST = ROOT / "docs/datasets.manifest.json"
-SPLITS = {"test": MESSAGES, "validation": MESSAGES.with_name("disaster_response_validation.csv")}
 CACHE = ROOT / "data/processed/eval_messages_cache.jsonl"
 DOC = ROOT / "docs/evaluation.md"
 START = "<!-- results:start, written by scripts/evaluate_messages.py -->"
 END = "<!-- results:end -->"
 COLUMNS = {"english": "message", "original": "original"}
 MAX_NORMAL_WAIT_S = 1800  # the desk's aging guard; irrelevant for a single first turn
-LABEL = ("Recorded 2010 Haiti and Pakistan SMS and Hurricane Sandy message-board posts (Munro {split} split, direct "
-         "messages, CC BY 4.0, Robert Munro 2012) with proxy category labels, first message only; not 211 calls")
-# USD per million tokens for claude-haiku-5-5 (prompts up to 100K); cache writes ~1.25x and reads ~0.1x input.
-PRICE = {"input_tokens": 0.10, "output_tokens": 0.50, "cache_creation_input_tokens": 0.125, "cache_read_input_tokens": 0.01}
+SPLITS = {"test": MESSAGES, "validation": MESSAGES.with_name("disaster_response_validation.csv"),
+          "train": MESSAGES.with_name("disaster_response_training.csv")}
+# USD per million tokens (Haiku: prompts up to 100K); cache writes 1.25x and reads 0.1x input.
+PRICES = {
+    "claude-haiku-5-5": {"input_tokens": 0.10, "output_tokens": 0.50, "cache_creation_input_tokens": 0.125,
+                         "cache_read_input_tokens": 0.01},
+    "claude-sonnet-5-5": {"input_tokens": 2.0, "output_tokens": 10.0, "cache_creation_input_tokens": 2.5,
+                          "cache_read_input_tokens": 0.20},
+}
+TOKENS = tuple(PRICES[EXTRACTION_MODEL])
 REVIEW_KINDS = ("Unverified quotes dropped", "Location not in the caller's words",
                 "Life threat reported without a verified caller quote", "Reply withheld because it made a promise",
                 "Interview failed", "the offline English keyword mode cannot read it")
+
+
+def label(split: str) -> str:
+    return (f"Recorded 2010 Haiti and Pakistan SMS and Hurricane Sandy message-board posts (Munro {split} split, "
+            "direct messages, CC BY 4.0, Robert Munro 2012) with proxy category labels, first message only; not 211 calls")
+
+
+def cost(usage: dict, model: str) -> float:
+    return sum(usage[name] * price for name, price in PRICES[model].items()) / 1e6
+
+
+def outputs(split: str, model: str) -> tuple[Path, bool]:
+    """Where a run's results go, and whether it is the published run that feeds the app and the docs."""
+    if split == "test" and model == EXTRACTION_MODEL:
+        return evaluation.RESULTS, True
+    return ROOT / f"data/processed/eval_messages_{split}_{model}.json", False
+
+
+def cache_for(model: str) -> Path:
+    return CACHE if model == EXTRACTION_MODEL else CACHE.with_name(f"eval_messages_cache_{model}.jsonl")
 
 
 def manifest_sha256(path: Path) -> str:
@@ -87,8 +116,10 @@ def load_messages(path: Path, sha256: str, split: str = "test") -> list[dict]:
                     raise ValueError(f"message id {raw['id']} appears twice with different content")
                 continue
             seen[raw["id"]] = raw
-            # A blank translation (one validation message) is treated like a missing original: that
-            # text column skips the message, and the results count each column.
+            # One direct message each in the training and validation splits has no translation; it is judged
+            # on its original only.
+            if not raw["message"].strip() and not raw["original"].strip():
+                raise ValueError(f"message {raw['id']} has no text")
             request = _flag(raw, "request")
             danger = any(_flag(raw, name) for name in ("search_and_rescue", "medical_help", "death"))
             rows.append({"id": raw["id"], "event": raw["event"], "message": raw["message"].strip(),
@@ -116,10 +147,11 @@ def _client() -> anthropic.Anthropic:
 
 class CachedClient:
     """Stands in for anthropic.Anthropic inside model_turn. A request seen before returns its saved raw
-    response, so a rerun replays the same answers through the current code without API calls."""
+    response, so a rerun replays the same answers through the current code without API calls. With a
+    model, every request goes to that model instead of the desk's, and is cached under it."""
 
-    def __init__(self, path: Path, make_client=_client):
-        self.path, self._make_client, self._client = path, make_client, None
+    def __init__(self, path: Path, make_client=_client, model: str | None = None):
+        self.path, self._make_client, self._client, self.model = path, make_client, None, model
         self.messages = self  # model_turn calls client.messages.create(...)
         self._lock = threading.Lock()
         self._key_locks: dict[str, threading.Lock] = {}
@@ -135,6 +167,8 @@ class CachedClient:
                 self._saved[entry["key"]] = entry["response"]
 
     def create(self, **request) -> Message:
+        if self.model:
+            request = {**request, "model": self.model}
         key = hashlib.sha256(json.dumps(request, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         with self._lock:
             key_lock = self._key_locks.setdefault(key, threading.Lock())
@@ -159,9 +193,9 @@ class CachedClient:
 
     def usage(self) -> dict:
         """Token totals of the distinct responses this run used, whether sent now or replayed."""
-        totals = Counter({name: 0 for name in PRICE})
+        totals = Counter({name: 0 for name in TOKENS})
         for key in self._used:
-            totals.update({name: self._saved[key]["usage"].get(name) or 0 for name in PRICE})
+            totals.update({name: self._saved[key]["usage"].get(name) or 0 for name in TOKENS})
         return {"responses": len(self._used), **totals}
 
     def models(self) -> list[str]:
@@ -235,6 +269,7 @@ def _rate(p: dict | None, by_construction: bool = False) -> str:
 def markdown(results: dict) -> str:
     """The results block of docs/evaluation.md."""
     s, sample, usage = results["source"], results["sample"], results["usage"]
+    methods = {**METHODS, "model": f"Claude model mode ({', '.join(results['desk']['models_seen'])})"}
     lines = [
         f"Generated {results['generated_at']} by `scripts/evaluate_messages.py`. {results['label']}.",
         "",
@@ -259,7 +294,7 @@ def markdown(results: dict) -> str:
         "| Review flag, needs a person | Review flag, routine | Failed turns |",
         "|---|---|---|---|---|---|---|---|---:|",
     ]
-    for method, name in METHODS.items():
+    for method, name in methods.items():
         for text in evaluation.TEXTS:
             m = results["summaries"][method][text]
             fixed = m.get("by_construction", False)
@@ -275,7 +310,7 @@ def markdown(results: dict) -> str:
             for group, title in (("needs", "needs a person (sample)"), ("routine", "routine (sample)"),
                                  ("subset", "rescue, medical or death (all)")):
                 counts = tiers[group]
-                lines.append(f"| {METHODS[method]} | {TEXT_NAMES[text]} | {title} | {sum(counts.values())} | "
+                lines.append(f"| {methods[method]} | {TEXT_NAMES[text]} | {title} | {sum(counts.values())} | "
                              + " | ".join(str(counts[t]) for t in ("immediate", "priority", "unknown", "normal")) + " |")
     lines += ["", "Review notes in model mode (messages with at least one note of each kind, all evaluated messages):", "",
               "| Text | " + " | ".join(REVIEW_KINDS[:5]) + " |", "|---|" + "---:|" * 5]
@@ -293,8 +328,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--per-class", type=int, default=150, help="messages sampled from each class")
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--workers", type=int, default=4, help="concurrent Claude requests")
-    parser.add_argument("--split", choices=sorted(SPLITS), default="test",
-                        help="test feeds docs/evaluation.md and the simulator; iterate on validation")
+    parser.add_argument("--split", choices=SPLITS, default="test",
+                        help="train to tune the playbooks, validation to check them, test for the published run")
+    parser.add_argument("--model", choices=PRICES, default=EXTRACTION_MODEL, help="the model that answers each turn")
     args = parser.parse_args(argv)
 
     source = SPLITS[args.split]
@@ -302,7 +338,7 @@ def main(argv: list[str] | None = None) -> None:
     chosen = choose(rows, args.per_class, args.seed)
     jobs = [(row, text) for row in chosen for text in evaluation.TEXTS if row[COLUMNS[text]]]
     print(f"{len(rows)} direct messages; {len(chosen)} chosen; {len(jobs)} turns per method", flush=True)
-    client = CachedClient(CACHE)
+    client = CachedClient(cache_for(args.model), model=args.model)
     outcomes = {"rules": [first_turn(row[COLUMNS[text]], "rules") for row, text in jobs],
                 "model": run_model(jobs, client, args.workers)}
     records = [{"id": row["id"], "event": row["event"], "label": row["label"], "sampled": row["sampled"],
@@ -318,9 +354,8 @@ def main(argv: list[str] | None = None) -> None:
         for method in ("rules", "model"):
             summaries[method][text] = evaluation.summarize(select(method, text))
     usage = client.usage()
-    cost = sum(usage[name] * price for name, price in PRICE.items()) / 1e6
     results = {
-        "label": LABEL.format(split=args.split),
+        "label": label(args.split),
         "generated_at": datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%a %Y-%m-%d %H:%M PT"),
         "source": {"file": source.relative_to(ROOT).as_posix(), "sha256": manifest_sha256(source),
                    "split": args.split, "genre": "direct", "license": "CC BY 4.0",
@@ -333,7 +368,7 @@ def main(argv: list[str] | None = None) -> None:
                    "with_english": sum(bool(r["message"]) for r in chosen),
                    "with_original": sum(bool(r["original"]) for r in chosen),
                    "events": dict(Counter(r["event"] for r in chosen).most_common())},
-        "desk": {"model": EXTRACTION_MODEL, "models_seen": client.models(), "profile": "la-211",
+        "desk": {"model": args.model, "models_seen": client.models(), "profile": "la-211",
                  "playbooks_sha256": hashlib.sha256(reception.system_prompt().encode()).hexdigest(),
                  "turn": "one caller message to a fresh desk; the desk's facts, checks and failure handling apply"},
         "definitions": {
@@ -349,18 +384,18 @@ def main(argv: list[str] | None = None) -> None:
                                   for text in evaluation.TEXTS} for method in outcomes},
         "languages": {text: dict(Counter(r.get("language") or "(failed turn)" for r in select("model", text)).most_common())
                       for text in evaluation.TEXTS},
-        "usage": {**usage, "sent_this_run": client.sent, "replayed": client.reused, "cost_usd": round(cost, 4)},
+        "usage": {**usage, "sent_this_run": client.sent, "replayed": client.reused,
+                  "cost_usd": round(cost(usage, args.model), 4)},
         "rows": records,
     }
-    # Only the test split may reach the simulator and the docs; validation runs are for iterating.
-    out = evaluation.RESULTS if args.split == "test" else evaluation.RESULTS.with_name(f"eval_messages_{args.split}.json")
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
+    path, publish = outputs(args.split, args.model)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
     block = markdown(results)
-    if args.split == "test":
+    if publish:
         replace_block(DOC, block)
     print(block)
-    print(f"\nWrote {out}" + (f" and the results block of {DOC}" if args.split == "test" else ""))
+    print(f"\nWrote {path.relative_to(ROOT)}" + (f" and the results block of {DOC.relative_to(ROOT)}" if publish else ""))
 
 
 if __name__ == "__main__":

@@ -18,6 +18,7 @@ from dualuse.storage import DeskStore
 from dualuse.triage import Fifo, Tier, Tiered, Waiting, order
 
 MODES = ("model", "rules", "fifo")
+EMERGENCY_NUMBER = "911"  # a 211 line is not an emergency line; danger now goes to 911
 
 
 class Conflict(ValueError):
@@ -108,13 +109,13 @@ class HoldQueue:
             self.departed = [Departure(**row) for row in saved["departed"]]
             self.events = saved["events"]
             for call in self._calls.values():
-                if call.processing or call.status == "connecting":
-                    call.processing = False
+                if call.status == "connecting":
                     call.version += 1
-                    if call.status == "connecting":
-                        call.status = "waiting"
-                        call.transfer_id = call.operator_id = ""
-                    call.attention = "Service restarted during an interview or transfer; operator review required"
+                    call.status = "waiting"
+                    call.transfer_id = call.operator_id = ""
+                    call.attention = "Service restarted during a transfer; operator review required"
+                    self._log(call, "recovered", call.attention)
+                if self._interrupt(call, "Service restarted during an interview"):
                     self._log(call, "recovered", call.attention)
             self._save()
 
@@ -132,6 +133,18 @@ class HoldQueue:
         if text:
             call.dialogue.append({"speaker": "assistant", "text": text, "at": self.now(), "topic": topic})
 
+    def _interrupt(self, call: HeldCall, reason: str) -> bool:
+        """Cancel a running turn. Its caller message was never classified, so a person must read it."""
+        if not call.processing:
+            return False
+        call.processing = False
+        call.version += 1
+        call.attention = f"{reason}; review the latest caller message"
+        if call.tier == Tier.NORMAL:
+            call.tier = Tier.UNKNOWN
+            self._log(call, "tier_changed", f"normal -> unknown: {reason}")
+        return True
+
     @property
     def mode(self) -> str:
         return self._mode
@@ -143,10 +156,7 @@ class HoldQueue:
         with self._lock:
             if value != self._mode:
                 for call in self._calls.values():
-                    if call.processing:
-                        call.version += 1
-                        call.processing = False
-                        call.attention = "Mode changed during interview; review the latest caller message"
+                    self._interrupt(call, "Mode changed during an interview")
             self._mode = value
             self._save()
 
@@ -179,13 +189,14 @@ class HoldQueue:
                 call_id = f"call-{self._counter}"
             if call_id in self._calls:
                 raise ValueError(f"call {call_id} already exists")
-            ahead = len(self.order(self.active_policy))
             call = HeldCall(call_id, self.now(), last_activity=self.now())
             self._calls[call_id] = call
-            self._speak(call, f"You are in the waiting queue. There are currently {ahead} callers ahead; "
-                        "the order may change with urgency. I am an automated reception assistant. "
-                        "You can tell me what happened and what help you need while you wait. "
-                        "You may also wait for a person without answering my questions.", "welcome")
+            ahead = [c.call_id for c in self.order(self.active_policy)].index(call_id)
+            reorder = "" if self.active_policy == "fifo" else " The order can change when someone reports an urgent need."
+            self._speak(call, f"You are in the waiting queue. Callers ahead of you: {ahead}.{reorder} "
+                        f"If you or someone else is in danger right now, call {EMERGENCY_NUMBER}. "
+                        "I am an automated reception assistant. You can tell me what happened and what help "
+                        "you need while you wait, or wait for a person without answering my questions.", "welcome")
             self._log(call, "joined", "Entered queue; no information yet")
             self._save()
             return call
@@ -252,11 +263,15 @@ class HoldQueue:
             call.processing, call.error = False, ""
             if call.attention.startswith(("No response", "Interview failed")):
                 call.attention = ""
+            if turn.review:
+                call.attention = f"{call.attention}; {turn.review}" if call.attention else turn.review
+                self._log(call, "review_flag", turn.review)
             if old_tier != call.tier:
                 self._log(call, "tier_changed", f"{old_tier.value} -> {call.tier.value}: " + "; ".join(result.extraction.evidence))
             x = call.extraction
             if call.tier == Tier.IMMEDIATE and old_tier != Tier.IMMEDIATE:
-                self._speak(call, "Your report of immediate danger has been flagged for an operator. You remain on the line.")
+                self._speak(call, f"If you or someone with you is in danger right now, call {EMERGENCY_NUMBER} now. "
+                            "Your report has also been flagged for an operator.")
             if x.incident_kind != "none" and x.location and old_report != (x.incident_kind, x.location):
                 self._speak(call, "Your incident report and stated location have been recorded. This does not confirm that responders have been dispatched.")
             if turn.question:
@@ -292,9 +307,9 @@ class HoldQueue:
             if not ordered:
                 return None
             call = ordered[0]
+            self._interrupt(call, "An operator reserved the call during an interview")
             call.status, call.operator_id = "connecting", operator_id
             call.transfer_id = uuid.uuid4().hex
-            call.processing = False
             call.version += 1
             self._speak(call, "An operator is available and a handoff is being arranged. Please stay on the line.")
             self._log(call, "handoff_reserved", operator_id)
@@ -344,11 +359,12 @@ class HoldQueue:
             call = self._calls[call_id]
             if call.status not in ("waiting", "connecting"):
                 raise Conflict("Call is no longer in the waiting or connecting state")
+            self._interrupt(call, "The caller left during an interview")
             call.status = "disconnected" if disconnected else "hung_up"
-            call.ended_at, call.processing = self.now(), False
+            call.ended_at = self.now()
             call.version += 1
             call.transfer_id = call.operator_id = ""
-            if disconnected or not call.transcript or call.tier in (Tier.IMMEDIATE, Tier.UNKNOWN):
+            if disconnected or not call.transcript or call.tier in (Tier.IMMEDIATE, Tier.PRIORITY, Tier.UNKNOWN):
                 call.callback_status = "pending_review"
             reason = "connection_lost" if disconnected else "caller_hung_up"
             departure = Departure(call_id, self.now() - call.arrival, reason, self.now())

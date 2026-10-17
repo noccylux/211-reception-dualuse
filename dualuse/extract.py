@@ -84,15 +84,20 @@ IMMEDIATE_PHRASES = (
     "shooting",
     "stabbed",
     "overdose",
+    "is inside",
     "calling for help from inside",
     "shouting for help",
-    "suicid",
+    "suicide",
+    "suicidal",
 )
 PRIORITY_PHRASES = (
     "nowhere to sleep",
     "no shelter",
     "no place to stay",
-    "evacuat",
+    "evacuate",
+    "evacuated",
+    "evacuating",
+    "evacuation",
     "oxygen",
     "medication",
     "insulin",
@@ -111,17 +116,26 @@ PRIORITY_PHRASES = (
 )
 
 
+FIRE_WORDS = ("smoke", "flames", "fire", "wildfire")
+HAZARD_PHRASES = FIRE_WORDS + ("power line", "gas leak")
+ROUTINE_PHRASES = ("freeway", "fema", "calfresh", "benefits", "food pantry", "assistance", "fire damage")
+# Removed before matching: these mention a hazard word without reporting a hazard.
+NOT_A_REPORT = re.compile(r"\b(?:fire damage|smoke (?:detector|alarm)s?|(?:nobody|no one) is inside)\b")
+
+
 def _matches(text: str, phrases: tuple[str, ...]) -> list[str]:
+    """Whole words and phrases only, with an optional plural: 'fire' matches 'fires', not 'fired'."""
     lowered = text.lower()
-    return [phrase for phrase in phrases if phrase in lowered]
+    return [phrase for phrase in phrases if re.search(rf"(?<!\w){re.escape(phrase)}(?:e?s)?(?!\w)", lowered)]
 
 
 def classify_with_rules(text: str) -> Classification:
     """Fields from keywords alone: the degraded mode and the comparison baseline."""
-    immediate = _matches(text, IMMEDIATE_PHRASES)
+    reported = NOT_A_REPORT.sub(" ", text.lower())
+    immediate = _matches(reported, IMMEDIATE_PHRASES)
     priority = _matches(text, PRIORITY_PHRASES)
-    hazard = any(p in text.lower() for p in ("smoke", "flames", "fire", "power line", "gas leak"))
-    routine = any(p in text.lower() for p in ("freeway", "fema", "calfresh", "benefits", "food pantry", "assistance"))
+    hazard = _matches(reported, HAZARD_PHRASES)
+    routine = bool(_matches(text, ROUTINE_PHRASES))
     enough = bool(immediate or priority or hazard or routine)
     place = re.search(r"\b(?:at|on|near|above)\s+((?:\d{1,5}\s+)?(?:[A-Za-z'-]+\s+){1,3}(?:Street|St|Road|Rd|Avenue|Ave|Drive|Lane|Boulevard))\b", text, re.I)
     location = place.group(1).strip() if place else None
@@ -145,8 +159,8 @@ def classify_with_rules(text: str) -> Classification:
         evidence=immediate + priority,
         missing=missing,
         language="not detected (rules)",
-        incident_kind="fire" if hazard and any(p in text.lower() for p in ("smoke", "flames", "fire")) else "utility" if hazard else "medical" if immediate else "none",
-        report_only=hazard and any(p in text.lower() for p in ("i see", "i saw", "report")) and not immediate,
+        incident_kind="fire" if set(hazard) & set(FIRE_WORDS) else "utility" if hazard else "medical" if immediate else "none",
+        report_only=bool(hazard) and any(p in text.lower() for p in ("i see", "i saw", "report")) and not immediate,
         safety="danger" if immediate else "no_immediate_danger" if safe else "unknown",
     )
     return Classification(extraction, fields_to_tier(extraction), "rules")

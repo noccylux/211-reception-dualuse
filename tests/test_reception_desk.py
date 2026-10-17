@@ -1,6 +1,9 @@
 """Observable reception behavior, persistence, and races during slow inference."""
+import json
+import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -200,5 +203,177 @@ def test_model_output_cannot_use_assistant_words_as_caller_evidence():
             return Response()
     class Client:
         messages = Messages()
-    with pytest.raises(ValueError, match="evidence"):
-        model_turn([{"speaker": "assistant", "text": "Is there fire?"}, {"speaker": "caller", "text": "smoke"}], Client())
+    turn = model_turn([{"speaker": "assistant", "text": "Is there fire?"}, {"speaker": "caller", "text": "smoke"}], Client())
+    assert turn.classification.extraction.evidence == []
+    assert "fire" in turn.review
+
+
+class FakeClient:
+    """Returns one structured interview, shaped like a Messages API response."""
+
+    def __init__(self, payload):
+        self.payload = payload
+        self.messages = self
+
+    def create(self, **kwargs):
+        block = SimpleNamespace(type="text", text=json.dumps(self.payload))
+        return SimpleNamespace(stop_reason="end_turn", content=[block])
+
+
+def interview(evidence, life=True, location=None, question="Where are you right now?", topic="location"):
+    extraction = {"situation": "caller reports danger", "need": "", "location": location,
+                  "life_threat_now": life, "needs_person_soon": False, "enough_information": True,
+                  "evidence": evidence, "missing": [], "language": "English", "incident_kind": "medical",
+                  "report_only": False, "safety": "danger" if life else "unknown"}
+    return {"extraction": extraction, "topic": topic, "question": question}
+
+
+def caller(*texts):
+    return [{"speaker": "caller", "text": text} for text in texts]
+
+
+def test_evidence_matches_despite_apostrophe_and_case_differences():
+    turn = model_turn(caller("my son’s not breathing"), FakeClient(interview(["My son's not breathing"])))
+    assert turn.classification.tier == Tier.IMMEDIATE
+    assert turn.classification.extraction.evidence == ["My son's not breathing"] and not turn.review
+
+
+def test_unverifiable_quotes_are_dropped_and_flagged_without_losing_the_turn():
+    turn = model_turn(caller("he's not breathing please help"), FakeClient(interview(["not breathing", "he is turning blue"])))
+    assert turn.classification.tier == Tier.IMMEDIATE
+    assert turn.classification.extraction.evidence == ["not breathing"]
+    assert "he is turning blue" in turn.review
+
+
+def test_a_quote_may_span_two_caller_turns():
+    turn = model_turn(caller("My dad just", "collapsed and is not breathing"), FakeClient(interview(["My dad just collapsed"])))
+    assert turn.classification.extraction.evidence == ["My dad just collapsed"] and not turn.review
+
+
+def test_a_location_assembled_from_two_answers_is_kept():
+    turn = model_turn(caller("There is a fire in my building", "Oak Street", "number 12"),
+                      FakeClient(interview(["fire in my building"], location="12 Oak Street")))
+    assert turn.classification.extraction.location == "12 Oak Street" and not turn.review
+
+
+def test_an_invented_location_is_dropped_and_flagged():
+    turn = model_turn(caller("There is a fire in my building"), FakeClient(interview(["fire in my building"], location="12 Oak Street")))
+    assert turn.classification.extraction.location is None
+    assert "12 Oak Street" in turn.review
+    assert turn.classification.tier == Tier.IMMEDIATE
+
+
+def test_a_life_threat_without_a_verified_quote_stays_immediate_for_review():
+    turn = model_turn(caller("please hurry"), FakeClient(interview(["he is dying"])))
+    assert turn.classification.tier == Tier.IMMEDIATE
+    assert turn.classification.extraction.evidence == [] and turn.review
+
+
+@pytest.mark.parametrize("question", ["Please hang up and call 911 now.", "Where are you?\nIs anyone hurt?",
+                                      "Where are you? " + "x" * 400])
+def test_a_malformed_question_falls_back_without_discarding_the_turn(question):
+    turn = model_turn(caller("my neighbor is not breathing"), FakeClient(interview(["not breathing"], question=question)))
+    assert turn.classification.tier == Tier.IMMEDIATE
+    assert turn.question.endswith("?") and "\n" not in turn.question and len(turn.question) <= 300
+
+
+def test_an_interview_review_note_reaches_the_operator():
+    q = HoldQueue(1800)
+    call = q.add()
+    q.say(call.call_id, "please hurry", responder=lambda d, m: model_turn(d, FakeClient(interview(["he is dying"]))))
+    assert call.tier == Tier.IMMEDIATE and "he is dying" in call.attention
+
+
+def test_an_immediate_report_tells_the_caller_to_call_911():
+    q = HoldQueue(1800, mode="rules")
+    call = q.add()
+    q.say(call.call_id, "My neighbor collapsed on the sidewalk and he is not breathing")
+    replies = [t["text"] for t in call.dialogue[1:] if t["speaker"] == "assistant"]
+    assert call.tier == Tier.IMMEDIATE and any("911" in reply for reply in replies)
+
+
+def test_the_welcome_names_the_emergency_number_and_counts_only_callers_ahead():
+    q = HoldQueue(1800, mode="rules")
+    routine = q.add()
+    q.say(routine.call_id, "Where can I renew my CalFresh card")
+    newcomer = q.add()
+    welcome = newcomer.dialogue[0]["text"]
+    assert "911" in welcome
+    assert re.search(r"ahead of you: (\d+)", welcome).group(1) == "0"
+
+
+def slow(turn):
+    started, release = threading.Event(), threading.Event()
+
+    def responder(dialogue, mode):
+        started.set()
+        assert release.wait(5)
+        return turn
+
+    return responder, started, release
+
+
+def routine_call(q):
+    call = q.add()
+    q.say(call.call_id, "Where do I apply for FEMA assistance?", responder=lambda *_: result(Tier.NORMAL))
+    assert call.tier == Tier.NORMAL
+    return call
+
+
+def interrupt(q, call, action):
+    responder, started, release = slow(result(Tier.IMMEDIATE))
+    with ThreadPoolExecutor() as pool:
+        future = pool.submit(q.say, call.call_id, "My neighbor is trapped upstairs", responder=responder)
+        assert started.wait(2)
+        action()
+        release.set()
+        with pytest.raises(Conflict):
+            future.result(3)
+
+
+def test_a_reservation_during_a_turn_flags_the_message_and_raises_normal_to_unknown():
+    q = HoldQueue(1800)
+    call = routine_call(q)
+    interrupt(q, call, lambda: q.confirm(q.claim("alice").transfer_id, False))
+    assert call.status == "waiting" and call.tier == Tier.UNKNOWN and call.attention
+
+
+def test_a_hang_up_during_a_turn_creates_a_callback_task():
+    q = HoldQueue(1800)
+    call = routine_call(q)
+    interrupt(q, call, lambda: q.hang_up(call.call_id))
+    assert call.callback_status == "pending_review"
+
+
+def test_a_mode_change_during_a_turn_raises_normal_to_unknown():
+    q = HoldQueue(1800)
+    call = routine_call(q)
+
+    def switch():
+        q.mode = "rules"
+
+    interrupt(q, call, switch)
+    assert call.tier == Tier.UNKNOWN and call.attention
+
+
+def test_a_restart_during_a_turn_raises_normal_to_unknown(tmp_path):
+    path = tmp_path / "queue.sqlite3"
+    q = HoldQueue(1800, db_path=path, mode="rules")
+    call = routine_call(q)
+    seen = {}
+
+    def restart_mid_turn(dialogue, mode):
+        seen["desk"] = HoldQueue(1800, db_path=path)
+        return result(Tier.NORMAL)
+
+    q.say(call.call_id, "My neighbor is trapped upstairs", responder=restart_mid_turn)
+    restored = seen["desk"].call(call.call_id)
+    assert restored.tier == Tier.UNKNOWN and restored.attention
+
+
+def test_a_priority_caller_who_hangs_up_gets_a_callback_task():
+    q = HoldQueue(1800)
+    call = q.add()
+    q.say(call.call_id, "my oxygen runs out tonight", responder=lambda *_: result(Tier.PRIORITY))
+    q.hang_up(call.call_id)
+    assert call.callback_status == "pending_review"

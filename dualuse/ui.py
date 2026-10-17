@@ -45,7 +45,8 @@ def minutes(seconds):
 
 
 def tier_line(call):
-    return f"{TIER_ICON[call['tier']]} {call['call_id']} · {call['tier']} · {fmt_wait(call['waited_s'])}"
+    # No ticking wait time here: Streamlit collapses an expander whenever its label changes.
+    return f"{TIER_ICON[call['tier']]} {call['call_id']} · {call['tier']}"
 
 
 st.title("211 Reception")
@@ -162,7 +163,8 @@ def operator_panel():
                        "processing": c["processing"], "review": c["attention"]} for c in state["waiting"]], hide_index=True)
     for call in state["waiting"]:
         with st.expander(tier_line(call)):
-            st.caption(f"Source: {call['source']} · interview {'running' if call['processing'] else 'idle'}")
+            st.caption(f"Waiting {fmt_wait(call['waited_s'])} · source: {call['source']} · "
+                       f"interview {'running' if call['processing'] else 'idle'}")
             if call["attention"]:
                 st.warning(call["attention"])
             st.text(call["summary"])

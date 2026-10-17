@@ -53,6 +53,39 @@ def test_keyword_tier_baseline(text, tier):
     assert keyword_tier(text) is tier
 
 
+@pytest.mark.parametrize(
+    "text, tier",
+    [
+        ("There is smoke coming from my apartment and my daughter is inside", Tier.IMMEDIATE),
+        ("my kid is inside the burning house", Tier.IMMEDIATE),
+        ("There is smoke and nobody is inside", Tier.PRIORITY),
+        ("The evacuation has begun, where do we go?", Tier.PRIORITY),
+        ("My medications ran out yesterday", Tier.PRIORITY),
+        ("There is a wildfire behind our street", Tier.PRIORITY),
+        ("I need to file a fire damage claim with FEMA", Tier.NORMAL),
+    ],
+)
+def test_keyword_rules_match_whole_words_and_phrases(text, tier):
+    assert keyword_tier(text) is tier
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "I was fired from my job and need help with rent",
+        "The smoke detector keeps beeping",
+        "Is the Firestone Boulevard food pantry open today?",
+    ],
+)
+def test_words_that_merely_contain_a_hazard_word_are_not_hazard_reports(text):
+    result = classify_with_rules(text)
+    assert result.tier is not Tier.PRIORITY and result.extraction.incident_kind == "none"
+
+
+def test_a_word_that_contains_a_routine_word_does_not_make_an_emergency_routine():
+    assert keyword_tier("My female roommate took a lot of pills and will not wake up") is not Tier.NORMAL
+
+
 def test_rules_classification_agrees_with_keyword_tier_and_quotes_the_match():
     result = classify_with_rules("my house is on fire and my kid is inside")
     assert result.tier is Tier.IMMEDIATE

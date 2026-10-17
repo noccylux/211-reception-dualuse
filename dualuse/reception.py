@@ -1,11 +1,12 @@
 """A bounded interview planner. Only the desk can announce queue or handoff facts."""
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Literal
 
 import anthropic
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from dualuse.extract import Classification, Extraction, EXTRACTION_MODEL, classify_with_rules, fields_to_tier
 
@@ -13,7 +14,7 @@ from dualuse.extract import Classification, Extraction, EXTRACTION_MODEL, classi
 class Interview(BaseModel):
     extraction: Extraction
     topic: Literal["situation", "location", "safety", "need", "detail", "wait"]
-    question: str = Field(max_length=300)
+    question: str
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,7 @@ class ReceptionTurn:
     classification: Classification
     topic: str
     question: str
+    review: str = ""  # what the operator should double-check; empty when nothing was flagged
 
 
 QUESTIONS = {
@@ -80,18 +82,38 @@ def model_turn(dialogue: list[dict], client=None) -> ReceptionTurn:
     if block is None:
         raise RuntimeError("Interview returned no structured text")
     result = Interview.model_validate_json(block.text)
-    caller_text = "\n".join(t["text"] for t in dialogue if t["speaker"] == "caller")
-    if any(quote not in caller_text for quote in result.extraction.evidence):
-        raise ValueError("Interview evidence does not occur in the caller's words")
-    if result.extraction.life_threat_now and not any(q.strip() for q in result.extraction.evidence):
-        raise ValueError("Immediate danger needs quoted caller evidence")
-    location = result.extraction.location
-    if location and " ".join(location.casefold().split()) not in " ".join(caller_text.casefold().split()):
-        raise ValueError("Interview location does not occur in the caller's words")
-    if result.topic != "wait" and (not result.question.strip().endswith(("?", "？")) or "\n" in result.question):
-        raise ValueError("Interview must return one follow-up question")
-    question = "" if result.topic == "wait" else result.question.strip()
-    return ReceptionTurn(Classification(result.extraction, fields_to_tier(result.extraction), "model"), result.topic, question)
+    extraction, review = _checked(result.extraction, dialogue)
+    question = " ".join(result.question.split())
+    if result.topic == "wait":
+        question = ""
+    elif len(question) > 300 or not question.endswith(("?", "？", "؟")):
+        question = QUESTIONS[result.topic]
+    return ReceptionTurn(Classification(extraction, fields_to_tier(extraction), "model"), result.topic, question, review)
+
+
+_QUOTES = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"'})
+
+
+def _normalized(text: str) -> str:
+    return " ".join(text.casefold().translate(_QUOTES).split())
+
+
+def _checked(extraction: Extraction, dialogue: list[dict]) -> tuple[Extraction, str]:
+    """Keep what the caller's words support and flag the rest, so one bad field never discards a life threat."""
+    caller_text = _normalized(" ".join(t["text"] for t in dialogue if t["speaker"] == "caller"))
+    verified = [quote for quote in extraction.evidence if quote.strip() and _normalized(quote) in caller_text]
+    notes = []
+    unverified = [quote for quote in extraction.evidence if quote not in verified]
+    if unverified:
+        notes.append("Unverified quotes dropped: " + "; ".join(unverified))
+    location = extraction.location
+    # A location may combine short answers ("Oak Street", "number 12"); every part must come from the caller.
+    if location and not all(token in caller_text for token in re.findall(r"\w+", _normalized(location))):
+        notes.append(f"Location not in the caller's words, dropped: {location}")
+        location = None
+    if extraction.life_threat_now and not verified:
+        notes.append("Life threat reported without a verified caller quote")
+    return extraction.model_copy(update={"evidence": verified, "location": location}), "; ".join(notes)
 
 
 def rules_turn(dialogue: list[dict]) -> ReceptionTurn:

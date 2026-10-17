@@ -26,7 +26,7 @@ PROFILES = {
         languages=("en", "es", "zh"),
         emergency={"en": "911", "es": "911", "zh": "911"},
         address_hint="US street address: number, street, city; or a cross street or landmark",
-        welcome_extra="Para español, escriba en español. 如需中文服务，请直接用中文输入。",
+        welcome_extra="Para español, hable o escriba en español. 如需中文服务，请直接说中文或输入中文。",
     ),
     "cn-12345": Profile(
         key="cn-12345",
@@ -35,18 +35,18 @@ PROFILES = {
         emergency={"zh": "110（报警）、119（火警）或 120（急救）",
                    "en": "110 (police), 119 (fire) or 120 (ambulance)"},
         address_hint="Chinese address order: district, road, number, residential compound, building, unit",
-        welcome_extra="For English, please type in English.",
+        welcome_extra="For English, please speak or type in English.",
     ),
 }
 
 WELCOME = {
-    "en": ("You are in the waiting queue. Callers ahead of you: {ahead}.{reorder} If you or someone else is in "
+    "en": ("You are in the waiting queue. Callers already waiting when you joined: {ahead}.{reorder} If you or someone else is in "
            "danger right now, call {emergency}. I am an automated reception assistant. You can tell me what "
            "happened and what help you need while you wait, or wait for a person without answering my questions."),
-    "es": ("Está en la fila de espera. Personas delante de usted: {ahead}.{reorder} Si usted u otra persona está "
+    "es": ("Está en la fila de espera. Personas que ya esperaban cuando usted llegó: {ahead}.{reorder} Si usted u otra persona está "
            "en peligro ahora mismo, llame al {emergency}. Soy un asistente automático de recepción. Puede contarme "
            "qué pasó y qué ayuda necesita mientras espera, o esperar a una persona sin responder mis preguntas."),
-    "zh": ("您已进入排队等候，您前面还有 {ahead} 位来电者。{reorder}如果您或他人此刻有危险，请立即拨打 {emergency}。"
+    "zh": ("您已进入排队等候，您加入时已有 {ahead} 位来电者在等候。{reorder}如果您或他人此刻有危险，请立即拨打 {emergency}。"
            "我是自动接待助手。等候期间，您可以告诉我发生了什么、需要什么帮助；也可以不回答问题，直接等待人工。"),
 }
 REORDER = {

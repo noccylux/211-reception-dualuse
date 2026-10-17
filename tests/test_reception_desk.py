@@ -324,7 +324,7 @@ def test_the_desk_gives_the_model_the_callers_place_and_the_profile_number():
         return result(Tier.PRIORITY)
 
     q.say(call.call_id, "I need help", responder=record)
-    assert "911" in seen["facts"] and "Callers ahead of this caller: 1" in seen["facts"]
+    assert "911" in seen["facts"] and "already waiting when this caller joined: 1" in seen["facts"]
 
 
 def test_an_interview_review_note_reaches_the_operator():
@@ -349,7 +349,7 @@ def test_the_welcome_names_the_emergency_number_and_counts_only_callers_ahead():
     newcomer = q.add()
     welcome = newcomer.dialogue[0]["text"]
     assert "911" in welcome
-    assert re.search(r"ahead of you: (\d+)", welcome).group(1) == "0"
+    assert re.search(r"waiting when you joined: (\d+)", welcome).group(1) == "1"
 
 
 def slow(turn):
@@ -519,3 +519,22 @@ def test_offline_mode_names_japanese_and_spanish_it_cannot_read(text, name, code
     call = q.add()
     q.say(call.call_id, text)
     assert name in call.attention and call.language == code
+
+
+def test_a_message_recorded_in_fifo_mode_is_flagged_and_raises_normal_to_unknown():
+    q = HoldQueue(1800, mode="rules")
+    call = q.add()
+    q.say(call.call_id, "Where can I renew my CalFresh card?")
+    assert call.tier == Tier.NORMAL
+    q.mode = "fifo"
+    q.say(call.call_id, "My neighbor collapsed and he is not breathing")
+    assert call.tier == Tier.UNKNOWN and "FIFO" in call.attention
+
+
+def test_review_notes_accumulate_instead_of_replacing_each_other():
+    q = HoldQueue(1800)
+    call = q.add()
+    q.say(call.call_id, "please hurry", responder=lambda d, m, f: model_turn(d, f, client=FakeClient(interview(["he is dying"]))))
+    first = call.attention
+    interrupt(q, call, lambda: q.confirm(q.claim("alice").transfer_id, False))
+    assert first in call.attention and "reserved" in call.attention

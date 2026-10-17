@@ -121,7 +121,7 @@ class HoldQueue:
                     call.version += 1
                     call.status = "waiting"
                     call.transfer_id = call.operator_id = ""
-                    call.attention = "Service restarted during a transfer; operator review required"
+                    self._note(call, "Service restarted during a transfer; operator review required")
                     self._log(call, "recovered", call.attention)
                 if self._interrupt(call, "Service restarted during an interview"):
                     self._log(call, "recovered", call.attention)
@@ -145,17 +145,34 @@ class HoldQueue:
         """Say a code-owned line in the caller's language, with the call's profile numbers."""
         self._speak(call, line(call.profile, key, call.language))
 
+    def _note(self, call: HeldCall, note: str):
+        """Add a review note; notes accumulate until a person or a newer fact resolves them."""
+        notes = [n for n in call.attention.split(" | ") if n]
+        if note not in notes:
+            call.attention = " | ".join(notes + [note])
+
+    def _clear_notes(self, call: HeldCall, *prefixes: str):
+        call.attention = " | ".join(n for n in call.attention.split(" | ") if n and not n.startswith(prefixes))
+
+    def _unread(self, call: HeldCall, reason: str):
+        """The latest caller message was never classified, so a person must read it; never rank it as routine."""
+        self._note(call, f"{reason}; review the latest caller message")
+        if call.tier == Tier.NORMAL:
+            call.tier = Tier.UNKNOWN
+            self._log(call, "tier_changed", f"normal -> unknown: {reason}")
+
     def _interrupt(self, call: HeldCall, reason: str) -> bool:
-        """Cancel a running turn. Its caller message was never classified, so a person must read it."""
+        """Cancel a running turn and flag its unread message."""
         if not call.processing:
             return False
         call.processing = False
         call.version += 1
-        call.attention = f"{reason}; review the latest caller message"
-        if call.tier == Tier.NORMAL:
-            call.tier = Tier.UNKNOWN
-            self._log(call, "tier_changed", f"normal -> unknown: {reason}")
+        self._unread(call, reason)
         return True
+
+    def _waiting_before(self, call: HeldCall) -> int:
+        """Callers already waiting when this one joined: stable, unlike its position before classification."""
+        return sum(1 for c in self._calls.values() if c is not call and c.status == "waiting" and c.arrival <= call.arrival)
 
     @property
     def mode(self) -> str:
@@ -217,7 +234,7 @@ class HoldQueue:
             call = HeldCall(call_id, self.now(), last_activity=self.now(), profile=self._profile,
                             language=PROFILES[self._profile].languages[0], origin=origin)
             self._calls[call_id] = call
-            ahead = [c.call_id for c in self.order(self.active_policy)].index(call_id)
+            ahead = self._waiting_before(call)
             self._speak(call, welcome(call.profile, call.language, ahead, reorders=self.active_policy != "fifo"), "welcome")
             self._log(call, "joined", "Entered queue; no information yet")
             self._save()
@@ -226,12 +243,11 @@ class HoldQueue:
     def facts(self, call: HeldCall) -> str:
         """What the agent may tell this caller about the line and the queue; it states nothing else."""
         profile = PROFILES[call.profile]
-        waiting = [c.call_id for c in self.order(self.active_policy)]
-        ahead = waiting.index(call.call_id) if call.call_id in waiting else 0
         return "\n".join([
             f"- Line: {profile.name}. Address format: {profile.address_hint}.",
             f"- Emergency number for danger right now: {profile.emergency.get(call.language, profile.emergency['en'])}.",
-            f"- Callers ahead of this caller: {ahead}. The order can change; never promise a wait time.",
+            f"- Callers already waiting when this caller joined: {self._waiting_before(call)}. Urgent calls are "
+            "answered first, so never promise a place in line or a wait time.",
             f"- Priority tier set by the desk rules so far: {call.tier.value}.",
             f"- Transfer status: {call.status}.",
             "- The desk already welcomed the caller, told them their place in the queue and the emergency number.",
@@ -262,6 +278,7 @@ class HoldQueue:
             self._log(call, "caller_message", "New information received")
             if mode == "fifo":
                 call.source = "none"
+                self._unread(call, "Recorded in FIFO mode without classification")
                 self._desk(call, "fifo")
                 self._save()
                 return call
@@ -277,7 +294,7 @@ class HoldQueue:
                 if self._calls.get(call_id) is call and call.version == version and call.status == "waiting":
                     call.processing = False
                     call.error = f"Interview failed ({type(error).__name__}); operator review required"
-                    call.attention = call.error
+                    self._note(call, call.error)
                     if call.tier != Tier.IMMEDIATE:
                         call.tier = Tier.UNKNOWN
                     self._desk(call, "failed_turn")
@@ -294,13 +311,12 @@ class HoldQueue:
             if old_tier == Tier.IMMEDIATE and result.tier != Tier.IMMEDIATE:
                 previous = next((e["detail"] for e in reversed(self.events)
                                  if e["call_id"] == call_id and e["event"] == "tier_changed" and "-> immediate:" in e["detail"]), "")
-                call.attention = "Earlier immediate danger remains flagged for human review: " + previous
+                self._note(call, "Earlier immediate danger remains flagged for human review: " + previous)
             call.tier = Tier.IMMEDIATE if old_tier == Tier.IMMEDIATE else result.tier
             call.processing, call.error = False, ""
-            if call.attention.startswith(("No response", "Interview failed")):
-                call.attention = ""
+            self._clear_notes(call, "No response", "Interview failed")
             if turn.review:
-                call.attention = f"{call.attention}; {turn.review}" if call.attention else turn.review
+                self._note(call, turn.review)
                 self._log(call, "review_flag", turn.review)
             if turn.language:
                 call.language = language_of(turn.language)
@@ -332,7 +348,7 @@ class HoldQueue:
             else:
                 if call.tier != Tier.IMMEDIATE:
                     call.tier = Tier.UNKNOWN
-                call.attention = "No response after a check-in; human review required"
+                self._note(call, "No response after a check-in; human review required")
                 self._desk(call, "silence_2")
             self._log(call, "silence", f"Check-in {call.silence_count}")
             self._save()

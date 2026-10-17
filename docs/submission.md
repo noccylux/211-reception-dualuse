@@ -27,6 +27,7 @@ Required by the rules. Add each tool when it is first used.
 | OpenAI Codex | Dataset acquisition and integrity checks, the multi-turn reception implementation, tests, repository documentation and Twist 2/3 response drafts |
 | ChatGPT (6 Pro) | Idea evaluation, competitor and dataset research before the build |
 | Claude API (Anthropic SDK, `claude-haiku-5-5`) | The reception agent's replies in the caller's language from playbooks, and structured caller-field extraction; code controls tier rules, emergency referrals and handoff |
+| Retell AI | Phone numbers, speech-to-text and text-to-speech for voice callers; the desk's own logic produces every reply (branch `voice-retell-bridge`) |
 
 ## Pitch outline (5 minutes)
 

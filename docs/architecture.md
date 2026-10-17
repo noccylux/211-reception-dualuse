@@ -52,6 +52,7 @@ or emergency dispatch system. Design and history: change records
 | `dualuse/api.py` | Validated HTTP boundary; one persistent desk per process. |
 | `dualuse/ui.py` | Caller conversation, operator desk, incident reports, scenario simulator, about page. Panels refresh every 2 s. |
 | `dualuse/triage.py`, `simulation.py`, `surge.py` | Queue policies and the offline three-policy simulation. |
+| `dualuse/voice_bridge.py` | Separate process connecting Retell phone calls to the desk through the REST API only; see [voice.md](voice.md). |
 
 ## Conversation turn
 

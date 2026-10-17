@@ -120,9 +120,20 @@ def _checked(extraction: Extraction, dialogue: list[dict]) -> tuple[Extraction, 
     return extraction.model_copy(update={"evidence": verified, "location": location}), "; ".join(notes)
 
 
+SCRIPTS = (  # (language code, English name, character range) for scripts the English keywords cannot read
+    ("zh", "Chinese", "一-鿿"), ("ko", "Korean", "가-힯"), ("ja", "Japanese", "぀-ヿ"),
+    ("ar", "Arabic", "؀-ۿ"), ("hy", "Armenian", "԰-֏"), ("ru", "Russian", "Ѐ-ӿ"),
+)
+
+
 def rules_turn(dialogue: list[dict]) -> ReceptionTurn:
     """Explicitly labeled English baseline; model mode never silently falls back to it."""
     text = "\n".join(t["text"] for t in dialogue if t["speaker"] == "caller")
+    unreadable = next(((code, name) for code, name, chars in SCRIPTS if re.search(f"[{chars}]", text)), None)
+    if unreadable:
+        code, name = unreadable
+        review = f"{name} text: the offline English keyword mode cannot read it; a person who reads {name} should review"
+        return ReceptionTurn(classify_with_rules(text), "situation", fallback_question("situation", code), review, code)
     result = classify_with_rules(text)
     asked = {t.get("topic") for t in dialogue if t["speaker"] == "assistant"}
     last = next((t["text"].lower() for t in reversed(dialogue) if t["speaker"] == "caller"), "")

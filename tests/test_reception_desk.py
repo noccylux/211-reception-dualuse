@@ -468,3 +468,11 @@ def test_api_switches_profiles_and_rejects_unknown_ones():
     state = client.post("/profile", json={"profile": "cn-12345"}).json()
     assert state["profile"] == "cn-12345" and {p["key"] for p in state["profiles"]} == {"la-211", "cn-12345"}
     assert client.post("/profile", json={"profile": "mars-1"}).status_code == 422
+
+
+def test_offline_mode_flags_a_language_it_cannot_read_and_answers_in_it():
+    q = HoldQueue(1800, mode="rules")
+    call = q.add()
+    q.say(call.call_id, "我们被困在楼里了")
+    assert call.tier == Tier.UNKNOWN and "Chinese" in call.attention and "offline" in call.attention
+    assert call.language == "zh" and call.dialogue[-1]["text"].endswith("？")

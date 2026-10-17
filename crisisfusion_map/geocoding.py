@@ -38,4 +38,4 @@ async def lookup(client, address):
             'precision_note':'TIGER street-range interpolation; may match a range without an actual building. Not proof of caller presence.'})
     return {'status':'single_match' if len(matches)==1 else 'multiple_matches' if matches else 'no_match',
         'matches':matches, 'source_url':SOURCE, 'benchmark':'Public_AR_Current',
-        'detail':'地址范围匹配不证明建筑存在，也不证明来电者或事件在此；需结合来电核实。'}
+        'detail':'An address-range match does not prove the building exists or that the caller or incident is there; verify with the caller.'}

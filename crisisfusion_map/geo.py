@@ -462,7 +462,7 @@ class GeoManager:
                 raise ValueError('An operator-defined area requires an evidence link, explicit review, and a display level')
             until = (datetime.now(timezone.utc)+timedelta(minutes=minutes)).isoformat()
             zone = {'zone_radius_m':radius, 'zone_level':level, 'valid_until':until, 'zone_expires_at':until,
-                'zone_source':'local_operator_defined_unverified', 'zone_note':'人工定义的核查范围，不是官方危险区或封控边界。'}
+                'zone_source':'local_operator_defined_unverified', 'zone_note':'Operator-defined review area; not an official danger zone or cordon.'}
         with self.engine.lock:
             self.require_enabled()
             call_id = payload.get('call_id')

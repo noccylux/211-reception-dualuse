@@ -15,11 +15,11 @@ from urllib.parse import urlsplit
 
 POLICY_VERSION = 'map-association-2026-10-17-v1'
 LEVELS = {
-    'UNKNOWN': {'label': '未知 / 待核实', 'colour': '#64748b', 'rank': 0},
-    'INFO': {'label': '仅信息', 'colour': '#2563eb', 'rank': 1},
-    'WATCH': {'label': '关注', 'colour': '#eab308', 'rank': 2},
-    'HIGH': {'label': '高关注', 'colour': '#f97316', 'rank': 3},
-    'CRITICAL': {'label': '最高关注', 'colour': '#dc2626', 'rank': 4},
+    'UNKNOWN': {'label': 'Unknown / unverified', 'colour': '#64748b', 'rank': 0},
+    'INFO': {'label': 'Info only', 'colour': '#2563eb', 'rank': 1},
+    'WATCH': {'label': 'Watch', 'colour': '#eab308', 'rank': 2},
+    'HIGH': {'label': 'High', 'colour': '#f97316', 'rank': 3},
+    'CRITICAL': {'label': 'Critical', 'colour': '#dc2626', 'rank': 4},
 }
 CAP_LEVELS = {'Extreme': 'CRITICAL', 'Severe': 'HIGH', 'Moderate': 'WATCH', 'Minor': 'INFO'}
 BOUNDARY_GUARD_M = 25
@@ -342,6 +342,6 @@ def assess_exposure(coordinates, events, providers, *, at=None, address_status=N
         relation = 'CANDIDATE_' + relation
     if address_conflict:
         relation = 'ADDRESS_REQUIRES_RECONFIRMATION'
-    return {'level': level, 'label': '位置需重新核实' if address_conflict else LEVELS[level]['label'], 'colour': LEVELS[level]['colour'],
+    return {'level': level, 'label': 'Location needs reconfirmation' if address_conflict else LEVELS[level]['label'], 'colour': LEVELS[level]['colour'],
             'relation': relation, 'matches': matches, 'gaps': list(dict.fromkeys(gaps)),
             'as_of': at.isoformat(), 'policy_version': POLICY_VERSION}

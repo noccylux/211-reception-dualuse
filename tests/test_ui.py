@@ -115,3 +115,16 @@ def test_emoji_codes_and_entities_in_caller_text_stay_literal(desk):
     sources = [element.value for element in app.markdown]
     assert not any(":fire:" in source for source in sources)
     assert any(r"\&lt;" in source for source in sources)
+
+
+def test_the_operator_desk_marks_a_phone_call_and_says_voice_is_not_transferred(desk):
+    queue, _ = desk
+    phone, typed = queue.add(origin="phone"), queue.add()
+    app = run_app()
+    app.sidebar.radio[0].set_value("Operator desk").run()
+    labels = {expander.label for expander in app.expander}
+    assert any(phone.call_id in label and "📞 phone" in label for label in labels)
+    assert any(typed.call_id in label and "phone" not in label for label in labels)
+    queue.claim("operator-1")
+    app.run()
+    assert any("Voice transfer is not connected" in info.value for info in app.info)

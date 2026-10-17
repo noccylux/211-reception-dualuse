@@ -185,7 +185,9 @@ def test_api_exposes_lifecycle_and_rejects_invalid_operations():
     assert client.post(f"/calls/{cid}/complete").status_code == 409
     reservation = client.post("/operator/free", json={"operator_id": "alice"}).json()["handoff"]
     assert reservation["status"] == "connecting"
-    assert client.post(f"/calls/{cid}/say", json={"text": "hello"}).status_code == 409
+    recorded = client.post(f"/calls/{cid}/say", json={"text": "hello"})
+    assert recorded.status_code == 200 and recorded.json()["transcript"] == ["hello"]
+    assert "without classification" in recorded.json()["attention"]
     assert client.post(f"/calls/{cid}/disconnect").status_code == 200
     assert client.post(f"/handoffs/{reservation['transfer_id']}/confirm", json={"success": True}).status_code == 409
     assert client.get(f"/calls/{cid}").json()["callback_status"] == "pending_review"
@@ -538,3 +540,48 @@ def test_review_notes_accumulate_instead_of_replacing_each_other():
     first = call.attention
     interrupt(q, call, lambda: q.confirm(q.claim("alice").transfer_id, False))
     assert first in call.attention and "reserved" in call.attention
+
+
+@pytest.mark.parametrize("first, expected", [
+    ("Where can I renew my CalFresh card?", Tier.UNKNOWN),
+    ("My oxygen is running out", Tier.PRIORITY),
+    ("My house is on fire", Tier.IMMEDIATE),
+])
+def test_unreadable_update_cannot_use_old_routine_words_to_establish_safety(first, expected):
+    q = HoldQueue(1800, mode="rules")
+    call = q.add()
+    q.say(call.call_id, first)
+    q.say(call.call_id, "我们被困在着火的楼里了")
+    assert call.tier == expected
+    assert not call.extraction.enough_information
+    assert "Chinese" in call.attention
+
+
+@pytest.mark.parametrize("confirmed", [False, True])
+def test_operator_takeover_records_without_running_model_and_survives_restart(tmp_path, confirmed):
+    path = tmp_path / "takeover.sqlite3"
+    q = HoldQueue(1800, mode="rules", db_path=path)
+    call = q.add()
+    q.say(call.call_id, "Where can I renew my CalFresh card?")
+    token = q.claim("alice").transfer_id
+    if confirmed:
+        q.confirm(token, True)
+    q.mode = "model"
+    before = len(call.dialogue)
+
+    def unexpected_model(*_):
+        raise AssertionError("An operator-held call must only record the caller's words")
+
+    q.say(call.call_id, "My child is not breathing", responder=unexpected_model)
+    assert call.tier == Tier.UNKNOWN and not call.processing
+    assert len(call.dialogue) == before + 1 and call.dialogue[-1]["speaker"] == "caller"
+    assert "operator takeover" in call.attention
+    if not confirmed:
+        q.confirm(token, False)
+    restored = HoldQueue(1800, db_path=path).call(call.call_id)
+    assert restored.transcript[-1] == "My child is not breathing"
+    assert restored.tier == Tier.UNKNOWN
+    if confirmed:
+        q.finish(call.call_id)
+        with pytest.raises(Conflict):
+            q.say(call.call_id, "after completion")

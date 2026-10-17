@@ -5,8 +5,9 @@ an actual application queue and talks, in their own language, with an automated
 reception assistant while waiting; the operator then gets the conversation,
 evidence and summary. Claude writes the replies from editable playbooks and
 extracts fields; code owns tiers, queue order, emergency referrals and handoff.
-Line profiles cover Los Angeles 211 and a China 12345 hotline. Telephone service
-is not connected.
+Line profiles cover Los Angeles 211 and a China 12345 hotline. English phone
+calls can reach the desk through the separate Retell voice bridge
+([docs/voice.md](docs/voice.md)); voice transfer to a person is not connected.
 
 ## Run
 
@@ -75,8 +76,8 @@ clears this desk. There is no authentication: use only local demo data.
 Tests use isolated databases and no paid model calls; `tests/test_ui.py` drives
 the Streamlit app with `AppTest` against the in-process API. The scenario
 simulator still uses synthetic calls and assumed classifier error rates; it does
-not measure Claude accuracy or real queue waits. A real-data evaluation and the
-Retell voice bridge are separate work.
+not measure Claude accuracy or real queue waits. A real-data evaluation is
+separate work.
 
 Details: [architecture](docs/architecture.md), change records
 [008](docs/changes/2026-10-17-008-reception-agent.md) and

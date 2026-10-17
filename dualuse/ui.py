@@ -46,9 +46,14 @@ def minutes(seconds):
     return None if seconds is None else round(seconds / 60, 1)
 
 
+def origin_label(call):
+    return "📞 phone (voice bridge)" if call["origin"] == "phone" else call["origin"]
+
+
 def tier_line(call):
     # No ticking wait time here: Streamlit collapses an expander whenever its label changes.
-    return f"{TIER_ICON[call['tier']]} {call['call_id']} · {call['tier']}"
+    phone = " · 📞 phone" if call["origin"] == "phone" else ""
+    return f"{TIER_ICON[call['tier']]} {call['call_id']} · {call['tier']}{phone}"
 
 
 def literal(text):
@@ -59,7 +64,8 @@ def literal(text):
 
 
 st.title("211 Reception")
-st.caption("Local text demonstration · no telephone connection, dispatch, or automatic callback")
+st.caption("Demonstration desk · typed calls, and phone calls through the Retell voice bridge when it runs · "
+           "no voice transfer to a person, dispatch, or automatic callback")
 view = st.sidebar.radio("Workspace", ["Caller conversation", "Operator desk", "Incident reports", "Scenario simulator", "About this demo"])
 initial = call_api("GET", "/state")
 with st.sidebar:
@@ -179,6 +185,9 @@ def operator_panel():
         if call["operator_id"] == operator and call["status"] in ("connecting", "handed_off"):
             with st.container(border=True):
                 st.subheader(f"{call['call_id']} · {call['status']}")
+                if call["origin"] == "phone":
+                    st.info("Phone caller on the Retell voice bridge. Voice transfer is not connected: the caller "
+                            "hears a fixed notice that an operator has the case and cannot hear you from this console.")
                 st.text(call["summary"])
                 with st.expander("Full conversation", expanded=False):
                     for turn in call["dialogue"]:
@@ -199,10 +208,10 @@ def operator_panel():
         st.dataframe([{"call": c["call_id"], "tier": c["tier"], "wait": fmt_wait(c["waited_s"]),
                        "FIFO position": c["fifo_position"] + 1, "tiered position": c["tiered_position"] + 1,
                        "language": c["language"], "processing": c["processing"], "review": c["attention"],
-                       "origin": c["origin"]} for c in state["waiting"]], hide_index=True)
+                       "origin": origin_label(c)} for c in state["waiting"]], hide_index=True)
     for call in state["waiting"]:
         with st.expander(tier_line(call)):
-            st.caption(f"Waiting {fmt_wait(call['waited_s'])} · source: {call['source']} · "
+            st.caption(f"Waiting {fmt_wait(call['waited_s'])} · origin: {origin_label(call)} · source: {call['source']} · "
                        f"interview {'running' if call['processing'] else 'idle'} · "
                        f"language: {call['language']} · distress: {call['distress']}")
             if call["attention"]:
@@ -217,7 +226,7 @@ def operator_panel():
     for call in tasks:
         with st.expander(f"{call['call_id']} · {call['status']} · {call['tier']}"):
             st.text(call["summary"])
-            st.caption("No telephone number is collected in this text demo. Record the operator's review outcome only.")
+            st.caption("The desk stores no caller telephone number, phone calls included. Record the operator's review outcome only.")
             disposition = st.selectbox("Outcome", ["handled_by_operator", "no_callback_needed"], key=f"review-{call['call_id']}")
             if st.button("Record review", key=f"review-save-{call['call_id']}"):
                 call_api("POST", f"/calls/{call['call_id']}/callback-review", json={"disposition": disposition})
@@ -373,12 +382,14 @@ elif view == "Scenario simulator":
 
 elif view == "About this demo":
     st.markdown("""
-This build interviews callers through typed messages. Claude extracts fields and proposes a
+This build interviews callers through typed messages and, when the separate Retell voice bridge
+runs, through English phone calls marked 📞 phone. Claude extracts fields and proposes a
 contextual follow-up question; the program controls queue ordering, recording and handoff.
 Offline mode uses English keywords and fixed questions and is explicitly labeled.
 
 Calls, conversations, reports, callback tasks and audit events persist in a local SQLite database.
-There is no connected telephone service, medical advice workflow, dispatch, or automated callback.
+A phone caller's voice is never transferred to a person: on handoff the caller hears a fixed notice.
+There is no medical advice workflow, dispatch, or automated callback.
 The operator confirms handoff using the demo controls. Treat the desk as a local, single-process demo.
 
 The scenario simulator uses synthetic calls and **assumed** classifier error rates. It does not

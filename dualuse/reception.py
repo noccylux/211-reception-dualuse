@@ -175,7 +175,11 @@ def rules_turn(dialogue: list[dict]) -> ReceptionTurn:
     if unreadable:
         code, name = unreadable
         review = f"{name} text: the offline English keyword mode cannot read it; a person who reads {name} should review"
-        return ReceptionTurn(classify_with_rules(text), "situation", fallback_question("situation", code), review, code)
+        result = classify_with_rules(text)
+        # Earlier routine keywords cannot establish the safety of a new unreadable message.
+        extraction = result.extraction.model_copy(update={"enough_information": False})
+        result = Classification(extraction, fields_to_tier(extraction), result.source)
+        return ReceptionTurn(result, "situation", fallback_question("situation", code), review, code)
     result = classify_with_rules(text)
     asked = {t.get("topic") for t in dialogue if t["speaker"] == "assistant"}
     last = next((t["text"].lower() for t in reversed(dialogue) if t["speaker"] == "caller"), "")

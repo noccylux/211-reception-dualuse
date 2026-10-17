@@ -28,7 +28,8 @@ INVARIANTS = [
     "Only a confirmed handoff completes transfer; a failure preserves the original arrival time.",
     "Reports are unverified; a shared location is not proof of a shared incident or dispatch.",
     "Normal callers gain scheduling priority after 30 minutes; this is not a maximum wait guarantee.",
-    "This is a local text demo. Voice, dispatch and automatic callback are not connected.",
+    "Phone callers reach the desk only through the Retell voice bridge when it runs. "
+    "Voice transfer to a person, dispatch and automatic callback are not connected.",
 ]
 Mode = Literal["model", "rules", "fifo"]
 app = FastAPI(title="211 reception and hold-queue assistant")
@@ -50,6 +51,8 @@ async def conflict_handler(request: Request, error: Conflict):
 
 class NewCall(BaseModel):
     text: str | None = Field(default=None, max_length=4000)
+    # A fixed set, so no client writes its own label into the operator's origin column.
+    origin: Literal["live", "phone"] = "live"
 
 
 class Utterance(BaseModel):
@@ -177,7 +180,7 @@ def get_call(call_id: str) -> dict:
 def new_call(body: NewCall) -> dict:
     if body.text is not None and not body.text.strip():
         raise HTTPException(422, "utterance cannot be blank")
-    call = QUEUE.add()
+    call = QUEUE.add(origin=body.origin)
     return process_turn(call.call_id, body.text) if body.text else one_call(call)
 
 

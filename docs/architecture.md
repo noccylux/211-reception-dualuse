@@ -1,8 +1,9 @@
 # Architecture: 211 reception desk
 
 Current behavior of the text reception demo on `worktree-comms-211-demo`,
-updated Sat 2026-10-17 11:00 PT. A local prototype, not a connected telephone
-or emergency dispatch system. Design and history: change records
+updated Sat 2026-10-17 11:00 PT. A local prototype, not a telephone switch
+or emergency dispatch system; English phone calls reach it only through the
+Retell voice bridge ([voice.md](voice.md)), labeled origin `phone`. Design and history: change records
 [008](changes/2026-10-17-008-reception-agent.md) and
 [009](changes/2026-10-17-009-reception-agent-design.md).
 
@@ -52,6 +53,7 @@ or emergency dispatch system. Design and history: change records
 | `dualuse/api.py` | Validated HTTP boundary; one persistent desk per process. |
 | `dualuse/ui.py` | Caller conversation, operator desk, incident reports, scenario simulator, about page. Panels refresh every 2 s. |
 | `dualuse/triage.py`, `simulation.py`, `surge.py` | Queue policies and the offline three-policy simulation. |
+| `dualuse/voice_bridge.py` | Separate process connecting Retell phone calls to the desk through the REST API only; see [voice.md](voice.md). |
 
 ## Conversation turn
 
@@ -71,9 +73,10 @@ or emergency dispatch system. Design and history: change records
    line, then the agent's reply follows. The caller's language is kept, so all
    later desk lines use it.
 
-The offline keyword mode reads English only. Text in Chinese, Korean, Japanese,
-Arabic, Armenian or Cyrillic stays UNKNOWN with a review flag naming the
-language. FIFO mode records messages without classifying them.
+The offline keyword mode reads English only. A detected unsupported language
+gets a review flag and cannot be ranked NORMAL using earlier routine keywords.
+The call stays UNKNOWN unless the transcript already supports PRIORITY or
+IMMEDIATE. FIFO mode records messages without classifying them.
 
 ## Lifecycle and concurrency
 
@@ -86,6 +89,13 @@ can also end as `hung_up` or `disconnected`.
   review and raises a NORMAL call to UNKNOWN.
 - Reservation is atomic within the one API process. A failed transfer returns
   the call with its original arrival. Reservations do not expire yet.
+- Messages during `connecting` or `handed_off` are saved without another model
+  interview and flagged for operator review; NORMAL becomes UNKNOWN. The bridge
+  forwards buffered speech in both states. The handoff history remains a snapshot
+  at confirmation; the call's full conversation includes later messages.
+- The voice bridge marks a call ended only after the desk acknowledges departure
+  or reports that it already left the queue. Failed webhook requests remain
+  retryable and do not cancel the pending disconnect grace task.
 - Hang-ups and disconnects keep the conversation. Disconnects, silent hang-ups
   and IMMEDIATE, PRIORITY or UNKNOWN callers who leave get a callback review
   task; no number is collected and nothing is dialed.

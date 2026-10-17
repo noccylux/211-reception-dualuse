@@ -72,6 +72,29 @@ def test_keyword_rules_match_whole_words_and_phrases(text, tier):
 @pytest.mark.parametrize(
     "text",
     [
+        "I hear gunshots outside my window",
+        "There is gunfire on our street",
+        "A man is holding us at gunpoint",
+        "My brother overdosed and will not wake up",
+        "my son can’t breathe",
+        "He was shot in the leg",
+    ],
+)
+def test_inflected_and_compound_danger_words_stay_immediate(text):
+    assert keyword_tier(text) is Tier.IMMEDIATE
+
+
+def test_evidence_quotes_the_callers_own_words():
+    assert "gunshots" in classify_with_rules("I hear gunshots outside").extraction.evidence
+
+
+def test_a_flu_shot_is_not_a_shooting():
+    assert keyword_tier("Where can I get a flu shot for my kids?") is not Tier.IMMEDIATE
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
         "I was fired from my job and need help with rent",
         "The smoke detector keeps beeping",
         "Is the Firestone Boulevard food pantry open today?",

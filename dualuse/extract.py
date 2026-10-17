@@ -80,10 +80,14 @@ IMMEDIATE_PHRASES = (
     "stroke",
     "collapsed",
     "drowning",
-    "gun",
+    "gun*",
     "shooting",
+    "shots fired",
+    "was shot",
+    "been shot",
+    "got shot",
     "stabbed",
-    "overdose",
+    "overdos*",
     "is inside",
     "calling for help from inside",
     "shouting for help",
@@ -123,17 +127,31 @@ ROUTINE_PHRASES = ("freeway", "fema", "calfresh", "benefits", "food pantry", "as
 NOT_A_REPORT = re.compile(r"\b(?:fire damage|smoke (?:detector|alarm)s?|(?:nobody|no one) is inside)\b")
 
 
+_APOSTROPHES = str.maketrans({"’": "'", "‘": "'"})
+
+
+def _found(text: str, phrases: tuple[str, ...]) -> dict[str, str]:
+    """Phrase -> the caller's matching words. Whole words with an optional plural ('fire' matches
+    'fires', not 'fired'); a trailing '*' marks a stem ('gun*' matches 'gunfire', not 'begun')."""
+    lowered = text.lower().translate(_APOSTROPHES)
+    found = {}
+    for phrase in phrases:
+        body = re.escape(phrase.rstrip("*"))
+        match = re.search(rf"(?<!\w){body}\w*" if phrase.endswith("*") else rf"(?<!\w){body}(?:e?s)?(?!\w)", lowered)
+        if match:
+            found[phrase] = match.group(0)
+    return found
+
+
 def _matches(text: str, phrases: tuple[str, ...]) -> list[str]:
-    """Whole words and phrases only, with an optional plural: 'fire' matches 'fires', not 'fired'."""
-    lowered = text.lower()
-    return [phrase for phrase in phrases if re.search(rf"(?<!\w){re.escape(phrase)}(?:e?s)?(?!\w)", lowered)]
+    return list(_found(text, phrases))
 
 
 def classify_with_rules(text: str) -> Classification:
     """Fields from keywords alone: the degraded mode and the comparison baseline."""
     reported = NOT_A_REPORT.sub(" ", text.lower())
-    immediate = _matches(reported, IMMEDIATE_PHRASES)
-    priority = _matches(text, PRIORITY_PHRASES)
+    immediate = list(_found(reported, IMMEDIATE_PHRASES).values())
+    priority = list(_found(text, PRIORITY_PHRASES).values())
     hazard = _matches(reported, HAZARD_PHRASES)
     routine = bool(_matches(text, ROUTINE_PHRASES))
     enough = bool(immediate or priority or hazard or routine)

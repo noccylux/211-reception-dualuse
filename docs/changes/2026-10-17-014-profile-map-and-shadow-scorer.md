@@ -21,13 +21,15 @@
   911/211/12345 lines route by jurisdiction. Each `Profile` has a `MapArea`: boundary,
   default view, geocoder, official feeds and the wording that names the area's city.
   * `la-211`: LA County boundary, US Census geocoder, NWS + USGS.
-  * `cn-12345`: Shanghai Municipality, OpenStreetMap boundary (relation 913067, via Nominatim,
+  * `cn-12345`: Shanghai Municipality as an example city, labeled so in the UI, OpenStreetMap boundary (relation 913067, via Nominatim,
     downloaded 2026-10-17T20:16:30Z, sha256 in `crisisfusion_map/data/geo_sources.json`;
     not an official boundary), Nominatim geocoder behind the same consent button at most once
     a second, USGS only. Census covers US addresses only and NWS US weather only.
-  * The city is an assumption: no global test dataset was found in `data/`, other worktrees
-    or branches, so Shanghai was used pending confirmation.
-* The base map stays world-wide and freely zoomable. Only the active line's calls are drawn;
+  * Shanghai is not derived from data: the user confirmed the test data has no fixed location,
+    so calls can come from anywhere. The default profile and starting view stay `la-211` / LA County.
+    The city is one per-profile setting (boundary file, view, name, locality wording).
+* The base map stays world-wide and freely zoomable, with a "Show all calls" control that fits
+  the view to every located call, however far from the service area. Only the active line's calls are drawn;
   switching profile replaces the map app. A call whose coordinates fall outside the area is
   grey and dashed, labeled "outside service area — transfer"; a call without coordinates gets
   no area judgement and no guessed point.

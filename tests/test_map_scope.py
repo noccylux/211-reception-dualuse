@@ -46,10 +46,10 @@ def test_profile_switch_replaces_the_map_scope_and_draws_only_that_lines_calls()
     shanghai = queue.add(origin="replay", location=PEOPLES_SQUARE)
     sync.sync_once()
     scope = sync.mounted.app.state.geo.snapshot()["scope"]
-    assert scope["name"] == "Shanghai Municipality" and scope["geocoder"]["id"] == "nominatim"
+    assert scope["name"] == "Shanghai Municipality (example city)" and scope["geocoder"]["id"] == "nominatim"
     assert [p["id"] for p in sync.mounted.app.state.geo.snapshot()["providers"]] == ["usgs"]
     assert list(assessments(sync)) == [shanghai.call_id]
-    assert sync.status["other_lines"] == 1 and sync.status["area"] == "Shanghai Municipality"
+    assert sync.status["other_lines"] == 1 and sync.status["area"] == "Shanghai Municipality (example city)"
 
 
 def test_a_call_located_outside_the_active_area_is_flagged_for_transfer():

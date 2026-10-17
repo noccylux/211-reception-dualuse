@@ -43,7 +43,7 @@ never changes a tier or the queue order.
 
 Before submitting, name the author of both plugins and list the AI tools they used.
 
-Boundary data: Shanghai Municipality from OpenStreetMap contributors (ODbL),
+Boundary data: Shanghai Municipality (the example city for the 12345 profile) from OpenStreetMap contributors (ODbL),
 relation 913067 via Nominatim; LA County from LA County GIS.
 
 ## Pitch outline (5 minutes)

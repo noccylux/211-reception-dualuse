@@ -59,8 +59,9 @@ PROFILES = {
         emergency={"zh": "110（报警）、119（火警）或 120（急救）",
                    "en": "110 (police), 119 (fire) or 120 (ambulance)"},
         address_hint="Chinese address order: district, road, number, residential compound, building, unit",
+        # Shanghai is an example city for the demo, not derived from any data: callers can be anywhere.
         # NWS covers the US only; USGS reports earthquakes world-wide. Census does not geocode China.
-        map_area=MapArea(name="Shanghai Municipality", boundary="shanghai.geojson",
+        map_area=MapArea(name="Shanghai Municipality (example city)", boundary="shanghai.geojson",
                          attribution="OpenStreetMap contributors (ODbL), simplified; not an official administrative boundary",
                          view=(31.23, 121.47, 9), geocoder="nominatim", feeds=("usgs",),
                          locality=r"上海|\bShanghai\b|\b20\d{4}\b"),

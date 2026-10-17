@@ -1,8 +1,10 @@
 # Twists
 
 Log of the three official problem changes and our responses. The procedure
-is in [../agents/twist-response.md](../agents/twist-response.md). Each
-response is due 6 hours after release, on the portal.
+is in [../agents/twist-response.md](../agents/twist-response.md). The
+"Due" column shows the original six-hour rule; the organizers lifted it
+(reported by the user, Sat 2026-10-17 09:50 PT), so all three responses go
+with the final submission.
 
 | Twist | Released (PT) | Due (PT) | Response submitted | Record |
 |---|---|---|---|---|

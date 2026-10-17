@@ -34,7 +34,10 @@ on Friday at 18:00; nobody starts with a pre-built project.
 - Must be present Fri 17:00 and Sun 12:00.
 - Submission: one Devpost project by **Sat 2026-10-17 22:00**, no extensions,
   with deck, demo video, code and teammates.
-- Three twists change the problem; answer each within 6 hours on the portal.
+- Three twists change the problem. The original rule was to answer each within
+  6 hours on the portal; the organizers lifted that limit (reported by the
+  user, Sat 2026-10-17 09:50 PT), so all three responses go with the final
+  submission.
 
 Twist 3 update (announcement relayed by the user Sat 2026-10-17): submit a
 poster with Devpost by **Sat 2026-10-17 22:00 PT** for printing for Sunday's

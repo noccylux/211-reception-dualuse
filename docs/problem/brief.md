@@ -1,8 +1,8 @@
 # Problem brief
 
 The official problem as revealed on Fri 2026-10-16, its four tracks and how
-it is judged, followed by our reading. Status: revealed; candidate ideas
-listed; track and idea not yet chosen. Twists go in [twists.md](twists.md); general event facts are in
+it is judged, followed by our reading. Status: revealed; track and idea
+chosen Sat 2026-10-17 00:45 PT (see [Our track choice](#tracks)). Twists go in [twists.md](twists.md); general event facts are in
 [../hackathon.md](../hackathon.md).
 
 Sources, saved in [../information/](../information/):
@@ -149,7 +149,20 @@ Track text from the Hub, verbatim:
 > slow, reroute, inspect or release? Which source do you trust? Which box
 > can't wait?
 
-Our track choice and reasons: not decided yet.
+Our track choice, decided Sat 2026-10-17 00:45 PT: **03 Communication (Resilience
+Comms, Retell AI)**. The seat is the overnight supervisor of a 211-type
+community and disaster assistance line, not a 911 PSAP. The build is a hold-queue
+assistant: while callers wait for an operator, a voice agent interviews them,
+deterministic rules put the ones who need a person now ahead (FIFO within a
+tier, insufficient information stays priority, bounded delay for everyone
+else), and the call transfers with a summary the moment an operator is free.
+It never hangs up and never makes the final decision. Design in
+[../architecture.md](../architecture.md); reasoning in
+[../changes/2026-10-17-005-track-and-idea.md](../changes/2026-10-17-005-track-and-idea.md).
+Rejected: a 911 PSAP seat (Carbyne, Prepared and Aurelian already sit there
+and automated calls into 911 are not accepted), and the brainstormed C1
+Callback Ladder as the main build (kept as the escalation path for callers
+who hang up while waiting).
 
 ## Judging
 
@@ -345,4 +358,4 @@ Ports (Terminal49):
   sponsor provides a key or a pre-loaded account (the Hub says "1M+
   containers"); where we get real container numbers.
 
-Decision and reasoning: link the change record.
+Decision and reasoning: [2026-10-17-005-track-and-idea.md](../changes/2026-10-17-005-track-and-idea.md).

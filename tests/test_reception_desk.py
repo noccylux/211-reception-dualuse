@@ -28,7 +28,7 @@ def test_multiple_turns_change_urgency_and_keep_the_agent_questions():
     first = q.add()
     second = q.add()
     seen = []
-    def answer(dialogue, mode):
+    def answer(dialogue, mode, facts):
         seen.append(dialogue)
         return result(Tier.PRIORITY if len(seen) == 1 else Tier.IMMEDIATE)
     q.say(second.call_id, "I see smoke", responder=answer)
@@ -43,7 +43,7 @@ def test_reservation_can_interrupt_inference_without_late_mutations():
     q = HoldQueue(1800)
     call = q.add()
     started, release = threading.Event(), threading.Event()
-    def slow(dialogue, mode):
+    def slow(dialogue, mode, facts):
         started.set()
         assert release.wait(5)
         return result(Tier.IMMEDIATE)
@@ -194,7 +194,7 @@ def test_api_exposes_lifecycle_and_rejects_invalid_operations():
 def test_model_output_cannot_use_assistant_words_as_caller_evidence():
     class Block:
         type = "text"
-        text = '{"extraction":{"situation":"smoke","need":"","location":null,"life_threat_now":true,"needs_person_soon":false,"enough_information":true,"evidence":["fire"],"missing":[],"language":"English"},"topic":"safety","question":"Are you safe?"}'
+        text = '{"extraction":{"situation":"smoke","need":"","location":null,"life_threat_now":true,"needs_person_soon":false,"enough_information":true,"evidence":["fire"],"missing":[],"language":"English"},"topic":"safety","reply":"Are you safe?","language_code":"en","distress":"worried"}'
     class Response:
         stop_reason = "end_turn"
         content = [Block()]
@@ -203,7 +203,7 @@ def test_model_output_cannot_use_assistant_words_as_caller_evidence():
             return Response()
     class Client:
         messages = Messages()
-    turn = model_turn([{"speaker": "assistant", "text": "Is there fire?"}, {"speaker": "caller", "text": "smoke"}], Client())
+    turn = model_turn([{"speaker": "assistant", "text": "Is there fire?"}, {"speaker": "caller", "text": "smoke"}], client=Client())
     assert turn.classification.extraction.evidence == []
     assert "fire" in turn.review
 
@@ -214,18 +214,22 @@ class FakeClient:
     def __init__(self, payload):
         self.payload = payload
         self.messages = self
+        self.requests = []
 
     def create(self, **kwargs):
+        self.requests.append(kwargs)
         block = SimpleNamespace(type="text", text=json.dumps(self.payload))
         return SimpleNamespace(stop_reason="end_turn", content=[block])
 
 
-def interview(evidence, life=True, location=None, question="Where are you right now?", topic="location"):
+def interview(evidence, life=True, location=None, reply="Where are you right now?", topic="location",
+              language_code="en", distress="worried"):
     extraction = {"situation": "caller reports danger", "need": "", "location": location,
                   "life_threat_now": life, "needs_person_soon": False, "enough_information": True,
                   "evidence": evidence, "missing": [], "language": "English", "incident_kind": "medical",
                   "report_only": False, "safety": "danger" if life else "unknown"}
-    return {"extraction": extraction, "topic": topic, "question": question}
+    return {"extraction": extraction, "topic": topic, "reply": reply, "language_code": language_code,
+            "distress": distress}
 
 
 def caller(*texts):
@@ -233,54 +237,100 @@ def caller(*texts):
 
 
 def test_evidence_matches_despite_apostrophe_and_case_differences():
-    turn = model_turn(caller("my son’s not breathing"), FakeClient(interview(["My son's not breathing"])))
+    turn = model_turn(caller("my son’s not breathing"), client=FakeClient(interview(["My son's not breathing"])))
     assert turn.classification.tier == Tier.IMMEDIATE
     assert turn.classification.extraction.evidence == ["My son's not breathing"] and not turn.review
 
 
 def test_unverifiable_quotes_are_dropped_and_flagged_without_losing_the_turn():
-    turn = model_turn(caller("he's not breathing please help"), FakeClient(interview(["not breathing", "he is turning blue"])))
+    turn = model_turn(caller("he's not breathing please help"), client=FakeClient(interview(["not breathing", "he is turning blue"])))
     assert turn.classification.tier == Tier.IMMEDIATE
     assert turn.classification.extraction.evidence == ["not breathing"]
     assert "he is turning blue" in turn.review
 
 
 def test_a_quote_may_span_two_caller_turns():
-    turn = model_turn(caller("My dad just", "collapsed and is not breathing"), FakeClient(interview(["My dad just collapsed"])))
+    turn = model_turn(caller("My dad just", "collapsed and is not breathing"), client=FakeClient(interview(["My dad just collapsed"])))
     assert turn.classification.extraction.evidence == ["My dad just collapsed"] and not turn.review
 
 
 def test_a_location_assembled_from_two_answers_is_kept():
     turn = model_turn(caller("There is a fire in my building", "Oak Street", "number 12"),
-                      FakeClient(interview(["fire in my building"], location="12 Oak Street")))
+                      client=FakeClient(interview(["fire in my building"], location="12 Oak Street")))
     assert turn.classification.extraction.location == "12 Oak Street" and not turn.review
 
 
 def test_an_invented_location_is_dropped_and_flagged():
-    turn = model_turn(caller("There is a fire in my building"), FakeClient(interview(["fire in my building"], location="12 Oak Street")))
+    turn = model_turn(caller("There is a fire in my building"), client=FakeClient(interview(["fire in my building"], location="12 Oak Street")))
     assert turn.classification.extraction.location is None
     assert "12 Oak Street" in turn.review
     assert turn.classification.tier == Tier.IMMEDIATE
 
 
 def test_a_life_threat_without_a_verified_quote_stays_immediate_for_review():
-    turn = model_turn(caller("please hurry"), FakeClient(interview(["he is dying"])))
+    turn = model_turn(caller("please hurry"), client=FakeClient(interview(["he is dying"])))
     assert turn.classification.tier == Tier.IMMEDIATE
     assert turn.classification.extraction.evidence == [] and turn.review
 
 
-@pytest.mark.parametrize("question", ["Please hang up and call 911 now.", "Where are you?\nIs anyone hurt?",
-                                      "Where are you? " + "x" * 400])
-def test_a_malformed_question_falls_back_without_discarding_the_turn(question):
-    turn = model_turn(caller("my neighbor is not breathing"), FakeClient(interview(["not breathing"], question=question)))
+@pytest.mark.parametrize("reply", ["", "   ", "Where are you? " + "x" * 1300])
+def test_an_empty_or_oversized_reply_falls_back_to_a_localized_question(reply):
+    turn = model_turn(caller("mi vecino no respira"),
+                      client=FakeClient(interview(["no respira"], reply=reply, language_code="es-MX")))
     assert turn.classification.tier == Tier.IMMEDIATE
-    assert turn.question.endswith("?") and "\n" not in turn.question and len(turn.question) <= 300
+    assert turn.reply.startswith("¿") and turn.reply.endswith("?") and turn.language == "es-MX"
+
+
+def test_a_reply_that_sends_the_caller_to_911_is_kept():
+    reply = "That sounds frightening. Please call 911 now. Where is he?"
+    turn = model_turn(caller("my neighbor is not breathing"), client=FakeClient(interview(["not breathing"], reply=reply)))
+    assert turn.reply == reply
+
+
+def test_the_model_sees_playbooks_real_turns_and_the_desk_facts():
+    client = FakeClient(interview(["on fire"]))
+    dialogue = [{"speaker": "assistant", "text": "Welcome to the queue.", "topic": "welcome"},
+                {"speaker": "caller", "text": "hello"},
+                {"speaker": "assistant", "text": "What is happening?", "topic": "situation"},
+                {"speaker": "caller", "text": "my house is on fire"}]
+    model_turn(dialogue, "Callers ahead of this caller: 3.", client=client)
+    request = client.requests[0]
+    assert request["system"][0]["cache_control"] == {"type": "ephemeral"}
+    assert "Calming" in request["system"][0]["text"] and "Life safety" in request["system"][0]["text"]
+    assert [m["role"] for m in request["messages"]] == ["user", "assistant", "user", "system"]
+    assert request["messages"][0]["content"] == "hello"
+    assert "Callers ahead of this caller: 3." in request["messages"][-1]["content"]
+
+
+def test_the_agent_reply_is_spoken_and_the_callers_language_is_kept():
+    q = HoldQueue(1800)
+    call = q.add()
+    payload = interview(["没有呼吸"], reply="这听起来很可怕。请立即拨打 911。他在哪里？", language_code="zh-CN", distress="distressed")
+    q.say(call.call_id, "我邻居倒在地上，没有呼吸", responder=lambda d, m, f: model_turn(d, f, client=FakeClient(payload)))
+    assert call.dialogue[-1]["text"] == payload["reply"]
+    assert call.language == "zh" and call.distress == "distressed"
+    assert any("拨打" in t["text"] and t["topic"] == "status" for t in call.dialogue)
+
+
+def test_the_desk_gives_the_model_the_callers_place_and_the_profile_number():
+    q = HoldQueue(1800, mode="rules")
+    ahead = q.add()
+    q.say(ahead.call_id, "My house is on fire")
+    call = q.add()
+    seen = {}
+
+    def record(dialogue, mode, facts):
+        seen["facts"] = facts
+        return result(Tier.PRIORITY)
+
+    q.say(call.call_id, "I need help", responder=record)
+    assert "911" in seen["facts"] and "Callers ahead of this caller: 1" in seen["facts"]
 
 
 def test_an_interview_review_note_reaches_the_operator():
     q = HoldQueue(1800)
     call = q.add()
-    q.say(call.call_id, "please hurry", responder=lambda d, m: model_turn(d, FakeClient(interview(["he is dying"]))))
+    q.say(call.call_id, "please hurry", responder=lambda d, m, f: model_turn(d, f, client=FakeClient(interview(["he is dying"]))))
     assert call.tier == Tier.IMMEDIATE and "he is dying" in call.attention
 
 
@@ -305,7 +355,7 @@ def test_the_welcome_names_the_emergency_number_and_counts_only_callers_ahead():
 def slow(turn):
     started, release = threading.Event(), threading.Event()
 
-    def responder(dialogue, mode):
+    def responder(dialogue, mode, facts):
         started.set()
         assert release.wait(5)
         return turn
@@ -362,7 +412,7 @@ def test_a_restart_during_a_turn_raises_normal_to_unknown(tmp_path):
     call = routine_call(q)
     seen = {}
 
-    def restart_mid_turn(dialogue, mode):
+    def restart_mid_turn(dialogue, mode, facts):
         seen["desk"] = HoldQueue(1800, db_path=path)
         return result(Tier.NORMAL)
 

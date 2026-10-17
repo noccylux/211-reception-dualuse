@@ -222,6 +222,20 @@ class HoldQueue:
             self._save()
             return call
 
+    def facts(self, call: HeldCall) -> str:
+        """What the agent may tell this caller about the line and the queue; it states nothing else."""
+        profile = PROFILES[call.profile]
+        waiting = [c.call_id for c in self.order(self.active_policy)]
+        ahead = waiting.index(call.call_id) if call.call_id in waiting else 0
+        return "\n".join([
+            f"- Line: {profile.name}. Address format: {profile.address_hint}.",
+            f"- Emergency number for danger right now: {profile.emergency.get(call.language, profile.emergency['en'])}.",
+            f"- Callers ahead of this caller: {ahead}. The order can change; never promise a wait time.",
+            f"- Priority tier set by the desk rules so far: {call.tier.value}.",
+            f"- Transfer status: {call.status}.",
+            "- The desk already welcomed the caller, told them their place in the queue and the emergency number.",
+        ])
+
     def order(self, policy_name: str) -> list[HeldCall]:
         with self._lock:
             waiting = [Waiting(c.call_id, c.arrival, c.tier) for c in self._calls.values() if c.status == "waiting"]
@@ -250,10 +264,10 @@ class HoldQueue:
                 self._desk(call, "fifo")
                 self._save()
                 return call
-            dialogue = copy.deepcopy(call.dialogue)
+            dialogue, facts = copy.deepcopy(call.dialogue), self.facts(call)
             self._save()
         try:
-            turn = ReceptionTurn(classify("\n".join(call.transcript)), "wait", "") if classify else responder(dialogue, mode)
+            turn = ReceptionTurn(classify("\n".join(call.transcript)), "wait", "") if classify else responder(dialogue, mode, facts)
         except Exception as error:
             # The failure remains visible; a failed model never becomes a successful rules prediction.
             with self._lock:
@@ -298,8 +312,8 @@ class HoldQueue:
                 self._desk(call, "emergency")
             if x.incident_kind != "none" and x.location and old_report != (x.incident_kind, x.location):
                 self._desk(call, "incident")
-            if turn.question:
-                self._speak(call, turn.question, turn.topic)
+            if turn.reply:
+                self._speak(call, turn.reply, turn.topic)
             else:
                 self._speak(call, line(call.profile, "saved_wait", call.language), "wait")
             self._save()

@@ -27,6 +27,11 @@ Required by the rules. Add each tool when it is first used.
 | ChatGPT (6 Pro) | Idea evaluation, competitor and dataset research before the build |
 | Claude API (Anthropic SDK, `claude-haiku-5-5`) | Contextual interview questions and structured caller-field extraction; code controls tier rules and handoff |
 
+Third-party code: `crisisfusion_map/` is the CrisisFusion map plugin 1.0.0,
+written by a classmate as a separate demo and vendored unchanged except for one
+test path. Before submitting, name its author and list the AI tools they used.
+Leaflet 1.9.4 (BSD-2-Clause) ships inside it.
+
 ## Pitch outline (5 minutes)
 
 1. The problem in LA, in one concrete scene.

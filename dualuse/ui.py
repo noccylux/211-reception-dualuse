@@ -58,7 +58,7 @@ def literal(text):
 
 st.title("211 Reception")
 st.caption("Local text demonstration · no telephone connection, dispatch, or automatic callback")
-view = st.sidebar.radio("Workspace", ["Caller conversation", "Operator desk", "Incident reports", "Scenario simulator", "About this demo"])
+view = st.sidebar.radio("Workspace", ["Caller conversation", "Operator desk", "Incident reports", "Incident map", "Scenario simulator", "About this demo"])
 initial = call_api("GET", "/state")
 with st.sidebar:
     st.caption("Persistent local desk" if initial["persistent"] else "Memory-only desk")
@@ -243,6 +243,15 @@ elif view == "Operator desk":
     operator_panel()
 elif view == "Incident reports":
     incident_panel()
+elif view == "Incident map":
+    status = initial["map"]
+    if status["error"]:
+        st.error(f"The map stopped updating: {status['error']}")
+    st.info("LA County map from the CrisisFusion map plugin. Shape shows how far a caller's stated address is "
+            "verified; color shows official NWS alerts or USGS quakes around it, fetched only when you press "
+            "refresh. Grey means unknown, never safe. The map does not change any queue tier.")
+    # Not a timed fragment: re-rendering would reload the iframe. The plugin page has its own refresh.
+    st.components.v1.iframe(f"{API_URL}/plugins/map/", height=1500, scrolling=True)
 elif view == "Scenario simulator":
     st.markdown(
         "**Simulated.** A synthetic surge from the parameters below, replayed under three queue policies with the "

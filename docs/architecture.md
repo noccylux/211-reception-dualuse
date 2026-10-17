@@ -16,6 +16,8 @@ surges use the same interview, queue and handoff path.
 | `dualuse/storage.py` | Atomically commit the desk snapshot to SQLite. |
 | `dualuse/api.py` | Validated HTTP boundary and single persistent desk. |
 | `dualuse/triage.py`, `simulation.py`, `surge.py` | Existing queue policies and synthetic scenario comparison. |
+| `dualuse/mapview.py` | Copies each queue call (caller words, stated location, tier as a display label) into the map plugin once a second, with a new revision only when content changes. In memory; rebuilt after a restart and replaced on reset. |
+| `crisisfusion_map/` | Vendored CrisisFusion map plugin 1.0.0, mounted at `/plugins/map/` and shown in the UI's "Incident map" workspace. LA County boundary, address candidates, Census geocoding on request, NWS alerts and USGS quakes on manual refresh. It never changes a tier. See its [README](../crisisfusion_map/README.md). |
 
 Each caller message is saved before inference. The model receives prior caller
 and assistant turns, but only caller words may support extracted evidence and

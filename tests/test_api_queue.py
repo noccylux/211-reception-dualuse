@@ -21,6 +21,18 @@ def test_new_call_waits_as_unknown_and_shows_its_positions(client):
     assert state["waiting"][0]["fifo_position"] == 0 and state["waiting"][0]["tiered_position"] == 0
 
 
+def test_a_new_call_is_labeled_live_unless_it_says_phone(client):
+    assert client.post("/calls", json={}).json()["origin"] == "live"
+    assert client.post("/calls", json={"origin": "phone"}).json()["origin"] == "phone"
+    assert [call["origin"] for call in client.get("/state").json()["waiting"]] == ["live", "phone"]
+
+
+@pytest.mark.parametrize("origin", ["simulated: team-written script", "PHONE", "", None])
+def test_a_new_call_rejects_any_other_origin_label(client, origin):
+    assert client.post("/calls", json={"origin": origin}).status_code == 422
+    assert client.get("/state").json()["waiting"] == []
+
+
 def test_saying_something_life_threatening_moves_the_call_to_the_tiered_head(client):
     first = client.post("/calls", json={"text": "is the 210 freeway open towards Pasadena"}).json()
     second = client.post("/calls", json={}).json()

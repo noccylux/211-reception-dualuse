@@ -1,8 +1,9 @@
 # Architecture: 211 reception desk
 
 Current behavior of the text reception demo on `worktree-comms-211-demo`,
-updated Sat 2026-10-17 11:00 PT. A local prototype, not a connected telephone
-or emergency dispatch system. Design and history: change records
+updated Sat 2026-10-17 11:00 PT. A local prototype, not a telephone switch
+or emergency dispatch system; English phone calls reach it only through the
+Retell voice bridge ([voice.md](voice.md)), labeled origin `phone`. Design and history: change records
 [008](changes/2026-10-17-008-reception-agent.md) and
 [009](changes/2026-10-17-009-reception-agent-design.md).
 

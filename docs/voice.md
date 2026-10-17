@@ -18,15 +18,25 @@ caller phone ─► Retell (number, speech-to-text, text-to-speech)
 * The bridge is a separate process and uses only the desk's REST endpoints,
   so each phone call is an ordinary desk call: it appears in the operator
   desk, the queue order and the incident reports like a typed one.
+* The bridge opens each desk call with `{"origin": "phone"}`. `POST /calls`
+  accepts only `live` (the default, typed calls) or `phone`; anything else
+  is a 422. The operator desk marks phone calls "📞 phone" in the queue and,
+  on handoff, reminds the operator that the caller's voice is not transferred.
 * The desk decides what the caller hears. The bridge adds only fixed lines:
   a demo-line notice before the welcome, "Okay." while a turn is processed,
   an operator-pickup notice when the operator reserves the call, and a short
   "still here" notice in place of a desk reply identical to the previous one.
+* The phone line is English only. The Retell agent's voice and recognizer are
+  English, so the bridge replaces the line profile's invitation to speak
+  Spanish or Chinese (`welcome_extra` in `dualuse/profiles.py`) with "This
+  phone line works in English only." It reads that fixed text from the code;
+  desk state still comes only through REST. Typed calls keep the invitation. With
+  the `cn-12345` profile the desk welcome is Chinese; the bridge logs a
+  warning and the English voice reads it as is, so use `la-211` for calls.
 * Retell silence reminders become desk silence events. A `call_ended`
   webhook with reason `user_hangup` becomes a hang-up; any other reason, or
   no webhook within 15 s of the socket closing, becomes a lost connection.
-* Not connected: voice transfer to a human, outbound callback, and the UI
-  label for voice calls. The UI still says there is no telephone connection.
+* Not connected: voice transfer to a human, dispatch and outbound callback.
 
 ## Run on the desktop
 
@@ -73,7 +83,7 @@ the account; without a number, use the dashboard's test call for the agent.
 ## Check it
 
 * `curl http://localhost:8010/health` returns `{"status":"ok"}`.
-* A test call shows a new waiting call in the operator desk, with each
+* A test call shows a new waiting call marked "📞 phone" in the operator desk, with each
   sentence in its conversation. Reserving it in the desk makes the caller
   hear the operator-pickup notice.
 * The bridge log names each Retell call and its desk call, and warns about

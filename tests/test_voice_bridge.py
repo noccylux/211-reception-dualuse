@@ -11,7 +11,8 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from dualuse import api, reception
-from dualuse.voice_bridge import ACK, DEMO_NOTICE, DESK_DOWN, HANDOFF, STILL_HERE, create_app, verify_signature
+from dualuse.profiles import PROFILES
+from dualuse.voice_bridge import ACK, DEMO_NOTICE, DESK_DOWN, ENGLISH_ONLY, HANDOFF, STILL_HERE, create_app, verify_signature
 
 SECRET = "ws-secret"
 KEY = "retell-key"
@@ -97,9 +98,20 @@ def test_answering_a_call_joins_the_desk_queue_and_speaks_its_welcome(bridge, de
     with connect(bridge) as ws:
         welcome = opened(ws)
         call = only_call(desk)
-        assert call["status"] == "waiting"
-        assert welcome["content"] == DEMO_NOTICE + " " + assistant_texts(call, 0)
+        assert call["status"] == "waiting" and call["origin"] == "phone"
+        assert welcome["content"].startswith(DEMO_NOTICE + " You are in the waiting queue.")
         assert welcome["content_complete"] is True
+
+
+def test_the_phone_welcome_replaces_the_spanish_and_chinese_invitation(bridge, desk):
+    invitation = PROFILES["la-211"].welcome_extra
+    assert desk.get("/state").json()["profile"] == "la-211"
+    with connect(bridge) as ws:
+        welcome = opened(ws)["content"]
+        desk_welcome = assistant_texts(only_call(desk), 0)
+        assert invitation and desk_welcome.endswith(invitation)
+        assert welcome == DEMO_NOTICE + " " + desk_welcome.replace(invitation, ENGLISH_ONLY)
+        assert "español" not in welcome and "中文" not in welcome
 
 
 def test_a_caller_turn_reaches_the_desk_and_the_desk_reply_is_spoken(bridge, desk):

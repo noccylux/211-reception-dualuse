@@ -16,10 +16,14 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 
 from dualuse.config import require
+from dualuse.profiles import PROFILES
 
 log = logging.getLogger("voice_bridge")
 
 DEMO_NOTICE = "This is a hackathon demonstration line, not a real 211 service."
+# Replaces the profile's invitation to speak another language: the Retell agent's voice and
+# recognizer are English, so it would read Spanish or Chinese aloud and not understand the reply.
+ENGLISH_ONLY = "This phone line works in English only."
 # Spoken at once while the desk's interview runs, which can take seconds.
 ACK = "Okay."
 HANDOFF = ("An operator now has your case on the demo console. "
@@ -71,6 +75,13 @@ def new_speech(line: Line, call: dict) -> str:
     texts = [t["text"] for t in call["dialogue"][line.spoken:] if t["speaker"] == "assistant"]
     line.spoken = len(call["dialogue"])
     return " ".join(texts)
+
+
+def phone_welcome(call: dict, speech: str) -> str:
+    if call["language"] != "en":
+        log.warning("desk line %s welcomes in %s; the English phone agent reads it as is", call["profile"], call["language"])
+    invitation = PROFILES[call["profile"]].welcome_extra
+    return speech.replace(invitation, ENGLISH_ONLY) if invitation else speech
 
 
 def create_app(desk: httpx.AsyncClient, ws_secret: str, retell_api_key: str, *,
@@ -183,11 +194,11 @@ def create_app(desk: httpx.AsyncClient, ws_secret: str, retell_api_key: str, *,
             if line.grace:
                 line.grace.cancel()
         else:
-            response = await desk.post("/calls", json={})
+            response = await desk.post("/calls", json={"origin": "phone"})
             response.raise_for_status()
             call = response.json()
             line = lines[retell_id] = Line(call["call_id"], 0)
-            welcome = DEMO_NOTICE + " " + new_speech(line, call)
+            welcome = DEMO_NOTICE + " " + phone_welcome(call, new_speech(line, call))
         line.ws = ws
         await line.send({"response_type": "config", "config": {"auto_reconnect": True, "call_details": False}})
         await line.respond("" if reconnect else welcome, response_id=0)

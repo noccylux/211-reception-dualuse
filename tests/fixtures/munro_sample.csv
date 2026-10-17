@@ -1,0 +1,7 @@
+id,split,message,original,genre,event
+11,test,We need water and food in Carrefour. The children are sick.,Nou bezwen dlo ak manje nan Kafou.,direct,haiti_earthquake
+12,test,UN reports roads closed near Leogane,,news,haiti_earthquake
+13,test,Please help us. My house fell and my brother is under the rubble,Tanpri ede nou.,direct,haiti_earthquake
+14,test,Where can we get tents? We sleep outside since the quake,Ki kote nou ka jwenn tant?,direct,haiti_earthquake
+15,train,Training row that must never be used,,direct,haiti_earthquake
+16,test,Flood water is in our house and we cannot leave,,direct,pakistan_floods

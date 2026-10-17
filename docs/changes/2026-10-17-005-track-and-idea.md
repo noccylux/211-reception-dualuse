@@ -44,4 +44,23 @@
 
 ## Verification
 
-* Pending: this record is updated when the modules land.
+Modules landed Sat 2026-10-17 between 01:00 and 02:00 PT on branch
+`worktree-comms-211-demo` (worktree `.claude/worktrees/comms-211-demo`), each
+written test-first:
+
+* `bash scripts/uv-run.sh python -m pytest -q`: **70 passed** in WSL,
+  Python 3.14 (triage 8, simulation 9, surge 10, extraction 14, hold queue
+  12, API queue 13, plus the scaffold's 4).
+* API and board started with the documented commands and exercised in the
+  browser: a routine caller then a Spanish fire call; the tiered order put the
+  fire call first while FIFO kept the routine caller first; the card showed
+  source `model` (Claude `claude-haiku-5-5`, `ANTHROPIC_API_KEY` was set in
+  `.env` by then), English fields, Spanish evidence quoted verbatim and the
+  unknowns. The surge replay on the default scenario reported immediate-tier
+  P95 wait 3.1 min against 11.6 min under FIFO, normal-tier P95 30.7 min
+  against 15.6 min (the cost), 6 misses against 25 for the rules baseline.
+  Simulated numbers from the stated parameters, not real calls.
+* Not verified: the Retell voice path (not built); the model path's behavior
+  on languages other than Spanish and English; any live-call latency.
+* Observed and documented: with `--reload`, editing any `.py` file restarts
+  the API and empties the in-memory queue.

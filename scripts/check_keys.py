@@ -30,10 +30,16 @@ def check_terminal49(key: str) -> None:
     ).raise_for_status()
 
 
+def check_openrouter(key: str) -> None:
+    # Reads the key's own record; spends no credits.
+    httpx.get("https://openrouter.ai/api/v1/key", headers={"Authorization": f"Bearer {key}"}, timeout=15).raise_for_status()
+
+
 CHECKS = {
     "ANTHROPIC_API_KEY": check_anthropic,
     "RETELL_API_KEY": check_retell,
     "TERMINAL49_API_KEY": check_terminal49,
+    "OPENROUTER_API_KEY": check_openrouter,
 }
 
 failed = False

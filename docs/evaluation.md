@@ -50,7 +50,11 @@ calls, so these numbers are not 211 accuracy.
   test split runs once afterwards. A validation run writes
   `data/processed/eval_messages_validation_claude-haiku-5-5.json`; only a test-split run with the desk model writes the results block
   below and `data/processed/eval_messages.json`, which the simulator reads.
-* The script also supports `--split train` and `--model claude-sonnet-5-5` for comparisons. Non-published runs use `eval_messages_<split>_<model>.json` and each model has its own cache.
+* The script also supports `--split train` and `--model claude-sonnet-5-5` for comparisons, and
+  `--openrouter MODEL` for another vendor's model through OpenRouter's Anthropic-compatible endpoint
+  (key `OPENROUTER_API_KEY`, sent only as a bearer token; cost as OpenRouter bills it). Non-published
+  runs use `eval_messages_<split>_<model>.json` (a `/` in the model id becomes `_`) and each model
+  has its own cache.
 * Raw Claude responses are cached by request in `data/processed/eval_messages_cache.jsonl`, so a
   rerun with unchanged playbooks replays the same answers through the current code for free. The
   evaluation client allows 60 s and three retries per request (the live desk: 20 s, none); latency
@@ -205,6 +209,62 @@ The keyword rows did not change: the offline rules were not touched.
   about a quarter of danger-proxy messages NORMAL, still far from the 5% miss rate the simulator
   assumed.
 
+## Another model through OpenRouter
+
+Sat 2026-10-17 15:34 and 15:45 PT, [record 019](changes/2026-10-17-019-deepseek-via-openrouter.md):
+`deepseek/deepseek-v4.1-flash-1017` (DeepSeek V4.1 Flash) answered the desk's own request through
+OpenRouter's Anthropic-compatible Messages endpoint (`https://openrouter.ai/api/v1/messages`): the
+same playbooks, schema, 4,000-token limit, low effort, desk checks and sample (seed 7). OpenRouter
+chose the host per request: InferenceNet (fp8) served 1,275 of the 1,377 requests, Cloudflare 80,
+Parasail 16, DeepInfra 6. One run each; recorded messages, proxy labels, first message only; not
+211 accuracy. The desk itself still uses `claude-haiku-5-5`.
+
+English translation:
+
+| Model mode | Validation, Haiku | Validation, DeepSeek | Test, Haiku | Test, DeepSeek |
+|---|---|---|---|---|
+| Miss: needs a person ranked NORMAL | 25.3% (38/150) | 18.7% (28/150) | 28.7% (43/150) | 21.3% (32/150) |
+| False alarm: routine ranked IMMEDIATE or PRIORITY | 5.3% (8/150) | 6.0% (9/150) | 3.3% (5/150) | 2.7% (4/150) |
+| Routine ranked ahead of NORMAL, UNKNOWN included | 46.7% (70/150) | 62.7% (94/150) | 43.3% (65/150) | 71.3% (107/150) |
+| Rescue, medical or death ranked NORMAL | 19.3% (16/83) | 18.1% (15/83) | 24.1% (20/83) | 26.5% (22/83) |
+| Rescue, medical or death ranked IMMEDIATE | 13 of 83 | 11 of 83 | 11 of 83 | 16 of 83 |
+| Review flag, needs a person | 2.7% (4/150) | 2.0% (3/150) | 0.7% (1/150) | 0.0% (0/150) |
+| Failed turns | 0 | 0 | 0 | 1 |
+
+Original text:
+
+| Model mode | Validation, Haiku | Validation, DeepSeek | Test, Haiku | Test, DeepSeek |
+|---|---|---|---|---|
+| Miss: needs a person ranked NORMAL | 26.7% (39/146) | 18.5% (27/146) | 27.5% (41/149) | 23.5% (35/149) |
+| False alarm: routine ranked IMMEDIATE or PRIORITY | 7.8% (11/141) | 5.7% (8/141) | 4.4% (6/137) | 2.9% (4/137) |
+| Routine ranked ahead of NORMAL, UNKNOWN included | 51.8% (73/141) | 66.0% (93/141) | 52.6% (72/137) | 61.3% (84/137) |
+| Rescue, medical or death ranked NORMAL | 18.5% (15/81) | 18.5% (15/81) | 22.0% (18/82) | 22.0% (18/82) |
+| Rescue, medical or death ranked IMMEDIATE | 16 of 81 | 6 of 81 | 15 of 82 | 11 of 82 |
+| Review flag, needs a person | 13.0% (19/146) | 7.5% (11/146) | 7.4% (11/149) | 6.0% (9/149) |
+| Failed turns | 0 | 0 | 0 | 0 |
+
+Cost per run of about 690 model turns: Haiku $0.32 and $0.33 at list price, DeepSeek $0.25 and $0.24
+as billed by OpenRouter.
+
+* DeepSeek leaves fewer needs-a-person messages NORMAL, mostly by ranking them UNKNOWN rather than
+  PRIORITY (validation English: 35 UNKNOWN against 27, 81 PRIORITY against 79). It also ranks many
+  more routine messages UNKNOWN, and UNKNOWN shares PRIORITY's queue rank: on the test split 107 of
+  150 routine English messages would wait ahead of NORMAL callers, against 65 with Haiku.
+* IMMEDIATE on the danger-proxy subset moves both ways (test English 16 against 11; validation
+  originals 6 against 16). One DeepSeek turn stopped at the 4,000-token limit.
+* Queue effect, from the scenario simulator's default surge (2 h, 120 calls per hour, 8 operators)
+  replayed over 200 seeds with each model's measured tiers (simulated calls): immediate callers who
+  hung up, Haiku against DeepSeek, were 19.7% against 28.2% with test-split English tiers, 21.2%
+  against 24.3% with test originals, 18.8% against 23.7% and 19.1% against 25.6% on validation;
+  FIFO 31.2%. Mean immediate waits: 3.8 against 5.3 minutes (test English).
+* Latency, 18 team-written samples through the desk with the live client (20 s timeout, no
+  retries): both models ranked all 18 as expected; Haiku median 2.3 s and at most 5.6 s, DeepSeek
+  median 3.3 s and at most 11.7 s.
+* Reading: about a quarter cheaper and fewer NORMAL misses, but a desk that ranks most routine
+  callers UNKNOWN serves immediate callers worse in the simulated queue. Not better for this desk as
+  written. The playbooks were written and checked with Claude; wording tuned for another model was
+  not tried.
+
 ## Use in the scenario simulator
 
 The Scenario simulator shows the table above and, next to the assumed policies, replays two
@@ -254,11 +314,12 @@ immediate callers who hung up beside P95 waits, because a wait only counts calle
 ```text
 bash scripts/uv-run.sh env -u ANTHROPIC_API_KEY python scripts/evaluate_messages.py
 bash scripts/uv-run.sh env -u ANTHROPIC_API_KEY python scripts/evaluate_messages.py --split validation
+bash scripts/uv-run.sh env -u ANTHROPIC_API_KEY python scripts/evaluate_messages.py --openrouter deepseek/deepseek-v4.1-flash-1017
 ```
 
 `env -u` lets `dualuse.config` read the key from `.env` when WSLENV forwards an empty variable.
 The test run writes `data/processed/eval_messages.json` (summaries and one row per message, method
 and text) and the results block above; the validation run writes only its own file. From a
 worktree, add `PYTHONPATH=.` after `env` so the worktree's `dualuse` is imported. Run one
-evaluation at a time: worktrees link `data/` to the main checkout, so every run appends to the
-same cache file.
+evaluation per model at a time: worktrees link `data/` to the main checkout, so runs of one model
+append to the same cache file.

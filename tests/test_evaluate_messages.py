@@ -119,7 +119,8 @@ def test_a_validation_run_leaves_the_test_results_and_the_docs_block_alone(tmp_p
     monkeypatch.setattr(evaluate_messages, "manifest_sha256", lambda p: digest if p == path else pytest.fail(f"read {p}"))
     monkeypatch.setattr(evaluate_messages, "DOC", doc)
     monkeypatch.setattr(evaluate_messages, "CachedClient",
-                        lambda cache, model: real_client(tmp_path / "cache.jsonl", lambda: Upstream(message(interview())), model=model))
+                        lambda cache, make_client, model: real_client(tmp_path / "cache.jsonl", lambda: Upstream(message(interview())),
+                                                                      model=model))
 
     evaluate_messages.main(["--split", "validation", "--per-class", "2", "--workers", "1"])
 
@@ -168,23 +169,27 @@ def interview(life=True, evidence=("on fire",), location=None):
             "language_code": "en", "distress": "worried"}
 
 
-def message(payload, stop_reason="end_turn"):
+def message(payload, stop_reason="end_turn", model="claude-haiku-5-5", cost=None):
+    usage = {"input_tokens": 12, "output_tokens": 7, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 30}
+    if cost is not None:  # OpenRouter adds the billed cost in USD to the usage
+        usage["cost"] = cost
     return Message.model_validate({
-        "id": "msg_test", "type": "message", "role": "assistant", "model": "claude-haiku-5-5",
+        "id": "msg_test", "type": "message", "role": "assistant", "model": model,
         "content": [{"type": "text", "text": json.dumps(payload)}], "stop_reason": stop_reason, "stop_sequence": None,
-        "usage": {"input_tokens": 12, "output_tokens": 7, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 30},
+        "usage": usage,
     })
 
 
 class Upstream:
-    """Counts requests; returns one canned response, or raises the given error."""
+    """Records requests; returns one canned response, or raises the given error."""
 
     def __init__(self, response=None, error=None):
-        self.response, self.error, self.calls = response, error, 0
+        self.response, self.error, self.calls, self.requests = response, error, 0, []
         self.messages = self
 
     def create(self, **request):
         self.calls += 1
+        self.requests.append(request)
         if self.error:
             raise self.error
         return self.response
@@ -202,7 +207,56 @@ def test_the_cache_sends_a_request_once_and_replays_it_from_disk(tmp_path):
     assert replay.messages.create(model="m", messages=[{"role": "user", "content": "fire"}]) == first
     assert (replay.sent, replay.reused) == (0, 1)
     assert replay.usage() == {"responses": 1, "input_tokens": 12, "output_tokens": 7,
-                              "cache_creation_input_tokens": 0, "cache_read_input_tokens": 30}
+                              "cache_creation_input_tokens": 0, "cache_read_input_tokens": 30, "cost": 0}
+
+
+def test_the_cache_totals_the_cost_that_openrouter_reports(tmp_path):
+    client = evaluate_messages.CachedClient(tmp_path / "cache.jsonl", lambda: Upstream(message(interview(), cost=0.00025)))
+    for text in ("fire", "smoke", "fire"):
+        client.messages.create(model="m", messages=[{"role": "user", "content": text}])
+    assert client.usage()["cost"] == pytest.approx(0.0005)
+
+
+def test_the_openrouter_client_sends_only_the_openrouter_key(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-must-not-leave")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    client = evaluate_messages._openrouter_client()
+    assert client.auth_headers == {"Authorization": "Bearer sk-or-test"}
+    assert str(client.base_url).rstrip("/") == "https://openrouter.ai/api"
+
+
+def test_an_openrouter_run_names_its_model_and_keeps_its_own_files(tmp_path, monkeypatch, capsys):
+    model = "deepseek/deepseek-v4.1-flash-1017"
+    path = tmp_path / "test.csv"
+    digest = write_csv(path, [{"id": 1, "message": "We need water", "original": "Nou bezwen dlo", "request": 1},
+                              {"id": 2, "message": "Weather news", "original": "Nouvel tan an", "request": 0}])
+    doc = tmp_path / "evaluation.md"
+    doc.write_text(f"{evaluate_messages.START}\nthe desk's results\n{evaluate_messages.END}\n", encoding="utf-8")
+    before = doc.read_text(encoding="utf-8")
+    upstream, seen = Upstream(message(interview(), model=model, cost=0.001)), {}
+    real_client = evaluate_messages.CachedClient
+
+    def cached(cache, make_client, model):
+        seen.update(cache=cache, make_client=make_client)
+        return real_client(tmp_path / cache.name, lambda: upstream, model=model)
+
+    monkeypatch.setattr(evaluate_messages, "ROOT", tmp_path)
+    monkeypatch.setattr(evaluate_messages, "SPLITS", {"test": path, "validation": tmp_path / "validation.csv"})
+    monkeypatch.setattr(evaluate_messages, "manifest_sha256", lambda p: digest if p == path else pytest.fail(f"read {p}"))
+    monkeypatch.setattr(evaluate_messages, "DOC", doc)
+    monkeypatch.setattr(evaluate_messages, "CachedClient", cached)
+
+    evaluate_messages.main(["--openrouter", model, "--per-class", "1", "--workers", "1"])
+
+    saved = json.loads((tmp_path / "data/processed/eval_messages_test_deepseek_deepseek-v4.1-flash-1017.json")
+                       .read_text(encoding="utf-8"))
+    assert seen["make_client"] is evaluate_messages._openrouter_client
+    assert seen["cache"].name == "eval_messages_cache_deepseek_deepseek-v4.1-flash-1017.jsonl"
+    assert {r["model"] for r in upstream.requests} == {model} and len(upstream.requests) == 4
+    assert saved["desk"]["model"] == model and saved["usage"]["cost_usd"] == pytest.approx(0.004)
+    assert not evaluate_messages.evaluation.RESULTS.exists() and doc.read_text(encoding="utf-8") == before
+    printed = capsys.readouterr().out
+    assert f"| Model mode ({model} via OpenRouter) | English translation |" in printed and "Claude" not in printed
 
 
 def test_concurrent_identical_requests_reach_the_api_once(tmp_path):
@@ -300,9 +354,10 @@ def test_the_results_block_reports_every_method_text_and_label():
         "source": {"split": "test", "messages": 1069, "needs": 422, "routine": 647, "subset": 83},
         "sample": {"seed": 7, "per_class": 150, "evaluated": 357, "subset_in_sample": 26, "with_english": 357, "with_original": 341,
                    "events": {"haiti_earthquake": 330}},
-        "desk": {"models_seen": ["claude-haiku-5-5"]},
+        "desk": {"models_seen": ["claude-haiku-5-5"], "provider": "anthropic"},
         "usage": {"responses": 2, "sent_this_run": 0, "input_tokens": 1, "output_tokens": 2,
-                  "cache_creation_input_tokens": 0, "cache_read_input_tokens": 3, "cost_usd": 0.0},
+                  "cache_creation_input_tokens": 0, "cache_read_input_tokens": 3, "cost_usd": 0.0,
+                  "cost_basis": "at list price"},
         "review_kinds": {"model": {t: dict.fromkeys(evaluate_messages.REVIEW_KINDS, 0) for t in ("english", "original")}},
         "languages": {"original": {"ht": 1}},
     }

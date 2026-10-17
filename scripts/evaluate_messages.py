@@ -18,7 +18,9 @@ Writes data/processed/eval_messages.json and the results block of docs/evaluatio
 
 Playbook wording is tuned on the training split (`--split train`) and checked on the validation split,
 whose messages are not read while tuning; `--model claude-sonnet-5-5` asks a larger model the same
-requests for comparison. Those runs write data/processed/eval_messages_<split>_<model>.json and leave
+requests for comparison, and `--openrouter MODEL` sends them to another vendor's model through
+OpenRouter's Anthropic-compatible endpoint (key OPENROUTER_API_KEY; cost as OpenRouter bills it).
+Those runs write data/processed/eval_messages_<split>_<model>.json and leave
 the app's results and the docs alone. From a worktree, add PYTHONPATH=. so Python imports that worktree's dualuse package rather than
 the editable install of the main checkout.
 """
@@ -28,6 +30,7 @@ import csv
 import hashlib
 import json
 import random
+import re
 import threading
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
@@ -76,15 +79,19 @@ def cost(usage: dict, model: str) -> float:
     return sum(usage[name] * price for name, price in PRICES[model].items()) / 1e6
 
 
+def _slug(model: str) -> str:
+    return re.sub(r"[^\w.-]+", "_", model)  # OpenRouter ids carry a vendor prefix: deepseek/deepseek-v4.1-flash-1017
+
+
 def outputs(split: str, model: str) -> tuple[Path, bool]:
     """Where a run's results go, and whether it is the published run that feeds the app and the docs."""
     if split == "test" and model == EXTRACTION_MODEL:
         return evaluation.RESULTS, True
-    return ROOT / f"data/processed/eval_messages_{split}_{model}.json", False
+    return ROOT / f"data/processed/eval_messages_{split}_{_slug(model)}.json", False
 
 
 def cache_for(model: str) -> Path:
-    return CACHE if model == EXTRACTION_MODEL else CACHE.with_name(f"eval_messages_cache_{model}.jsonl")
+    return CACHE if model == EXTRACTION_MODEL else CACHE.with_name(f"eval_messages_cache_{_slug(model)}.jsonl")
 
 
 def manifest_sha256(path: Path) -> str:
@@ -145,6 +152,14 @@ def _client() -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=require("ANTHROPIC_API_KEY"), timeout=60.0, max_retries=3)
 
 
+OPENROUTER = "https://openrouter.ai/api"  # its Anthropic-compatible Messages endpoint, POST /api/v1/messages
+
+
+def _openrouter_client() -> anthropic.Anthropic:
+    # Any explicit credential stops the SDK from reading ANTHROPIC_API_KEY, so the Anthropic key never reaches OpenRouter.
+    return anthropic.Anthropic(base_url=OPENROUTER, auth_token=require("OPENROUTER_API_KEY"), timeout=60.0, max_retries=3)
+
+
 class CachedClient:
     """Stands in for anthropic.Anthropic inside model_turn. A request seen before returns its saved raw
     response, so a rerun replays the same answers through the current code without API calls. With a
@@ -192,10 +207,12 @@ class CachedClient:
         return Message.model_validate(saved)
 
     def usage(self) -> dict:
-        """Token totals of the distinct responses this run used, whether sent now or replayed."""
-        totals = Counter({name: 0 for name in TOKENS})
+        """Token totals of the distinct responses this run used, whether sent now or replayed, and the cost in
+        USD that OpenRouter reports with each response (the Anthropic API reports none)."""
+        fields = (*TOKENS, "cost")
+        totals = Counter({name: 0 for name in fields})
         for key in self._used:
-            totals.update({name: self._saved[key]["usage"].get(name) or 0 for name in TOKENS})
+            totals.update({name: self._saved[key]["usage"].get(name) or 0 for name in fields})
         return {"responses": len(self._used), **totals}
 
     def models(self) -> list[str]:
@@ -269,7 +286,9 @@ def _rate(p: dict | None, by_construction: bool = False) -> str:
 def markdown(results: dict) -> str:
     """The results block of docs/evaluation.md."""
     s, sample, usage = results["source"], results["sample"], results["usage"]
-    methods = {**METHODS, "model": f"Claude model mode ({', '.join(results['desk']['models_seen'])})"}
+    seen = ", ".join(results["desk"]["models_seen"])
+    via_openrouter = results["desk"]["provider"] == "openrouter"
+    methods = {**METHODS, "model": f"Model mode ({seen} via OpenRouter)" if via_openrouter else f"Claude model mode ({seen})"}
     lines = [
         f"Generated {results['generated_at']} by `scripts/evaluate_messages.py`. {results['label']}.",
         "",
@@ -281,11 +300,11 @@ def markdown(results: dict) -> str:
         + ", ".join(f"{name} {count}" for name, count in sample["events"].items()) + ".",
         f"* English text exists for {sample['with_english']} and original text for {sample['with_original']} of them; "
         "Sandy messages have no original.",
-        f"* Claude: {usage['responses']} distinct responses from {', '.join(results['desk']['models_seen'])} "
+        f"* Model mode: {usage['responses']} distinct responses from {seen} "
         f"({usage['sent_this_run']} sent in this run, the rest replayed from the cache); "
         f"{usage['input_tokens']:,} uncached input, {usage['cache_read_input_tokens']:,} cache-read, "
         f"{usage['cache_creation_input_tokens']:,} cache-write and {usage['output_tokens']:,} output tokens; "
-        f"about ${usage['cost_usd']:.2f} at list price.",
+        f"about ${usage['cost_usd']:.2f} {usage['cost_basis']}.",
         "",
         "Rates with 95% Wilson intervals, as rate (count/n; interval):",
         "",
@@ -318,7 +337,7 @@ def markdown(results: dict) -> str:
         kinds = results["review_kinds"]["model"][text]
         lines.append(f"| {TEXT_NAMES[text]} | " + " | ".join(str(kinds[kind]) for kind in REVIEW_KINDS[:5]) + " |")
     languages = results["languages"]["original"]
-    lines += ["", "Language codes Claude reported for the original text: "
+    lines += ["", "Language codes the model reported for the original text: "
               + ", ".join(f"`{code}` {count}" for code, count in languages.items()) + "."]
     return "\n".join(lines)
 
@@ -330,7 +349,10 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--workers", type=int, default=4, help="concurrent Claude requests")
     parser.add_argument("--split", choices=SPLITS, default="test",
                         help="train to tune the playbooks, validation to check them, test for the published run")
-    parser.add_argument("--model", choices=PRICES, default=EXTRACTION_MODEL, help="the model that answers each turn")
+    answering = parser.add_mutually_exclusive_group()
+    answering.add_argument("--model", choices=PRICES, default=EXTRACTION_MODEL, help="the Claude model that answers each turn")
+    answering.add_argument("--openrouter", metavar="MODEL",
+                           help="another vendor's model that answers each turn, through OpenRouter's Anthropic-compatible endpoint")
     args = parser.parse_args(argv)
 
     source = SPLITS[args.split]
@@ -338,7 +360,8 @@ def main(argv: list[str] | None = None) -> None:
     chosen = choose(rows, args.per_class, args.seed)
     jobs = [(row, text) for row in chosen for text in evaluation.TEXTS if row[COLUMNS[text]]]
     print(f"{len(rows)} direct messages; {len(chosen)} chosen; {len(jobs)} turns per method", flush=True)
-    client = CachedClient(cache_for(args.model), model=args.model)
+    model = args.openrouter or args.model
+    client = CachedClient(cache_for(model), _openrouter_client if args.openrouter else _client, model=model)
     outcomes = {"rules": [first_turn(row[COLUMNS[text]], "rules") for row, text in jobs],
                 "model": run_model(jobs, client, args.workers)}
     records = [{"id": row["id"], "event": row["event"], "label": row["label"], "sampled": row["sampled"],
@@ -368,7 +391,8 @@ def main(argv: list[str] | None = None) -> None:
                    "with_english": sum(bool(r["message"]) for r in chosen),
                    "with_original": sum(bool(r["original"]) for r in chosen),
                    "events": dict(Counter(r["event"] for r in chosen).most_common())},
-        "desk": {"model": args.model, "models_seen": client.models(), "profile": "la-211",
+        "desk": {"model": model, "provider": "openrouter" if args.openrouter else "anthropic",
+                 "models_seen": client.models(), "profile": "la-211",
                  "playbooks_sha256": hashlib.sha256(reception.system_prompt().encode()).hexdigest(),
                  "turn": "one caller message to a fresh desk; the desk's facts, checks and failure handling apply"},
         "definitions": {
@@ -385,10 +409,11 @@ def main(argv: list[str] | None = None) -> None:
         "languages": {text: dict(Counter(r.get("language") or "(failed turn)" for r in select("model", text)).most_common())
                       for text in evaluation.TEXTS},
         "usage": {**usage, "sent_this_run": client.sent, "replayed": client.reused,
-                  "cost_usd": round(cost(usage, args.model), 4)},
+                  "cost_usd": round(usage["cost"] if args.openrouter else cost(usage, model), 4),
+                  "cost_basis": "as billed by OpenRouter" if args.openrouter else "at list price"},
         "rows": records,
     }
-    path, publish = outputs(args.split, args.model)
+    path, publish = outputs(args.split, model)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
     block = markdown(results)

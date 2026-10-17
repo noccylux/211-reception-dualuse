@@ -29,6 +29,7 @@ Required by the rules. Add each tool when it is first used.
 | ChatGPT (6 Pro) | Idea evaluation, competitor and dataset research before the build |
 | Claude API (Anthropic SDK, `claude-haiku-5-5`; evaluation comparison with `claude-sonnet-5-5`) | The reception agent's replies in the caller's language from playbooks, and structured caller-field extraction; code controls tier rules, emergency referrals and handoff. The same calls ran on recorded disaster messages for the evaluation ([evaluation.md](evaluation.md)) |
 | Retell AI | Phone numbers, speech-to-text and text-to-speech for voice callers; the desk's own logic produces every reply (branch `voice-retell-bridge`) |
+| DeepSeek V4.1 Flash via OpenRouter (`deepseek/deepseek-v4.1-flash-1017`, Anthropic-compatible Messages API) | Compared with `claude-haiku-5-5` on the recorded-message evaluation only; the demo does not use it ([evaluation.md](evaluation.md)) |
 
 Third-party code: `crisisfusion_map/` is the CrisisFusion map plugin 1.0.0,
 written by a classmate as a separate demo. We translated its UI strings to

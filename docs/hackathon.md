@@ -1,7 +1,8 @@
 # The Dual-Use Hackathon: event facts
 
-Official facts as of 2026-10-16, from the saved website and Field Manual in
-[information/](information/). Live changes are announced first on the
+Official facts from the saved website and Field Manual in
+[information/](information/), supplemented by the Twist 2/3 announcements
+relayed by the user on Sat 2026-10-17. Live changes are announced first on the
 WhatsApp community; record them here with their source. All times are
 Pacific time.
 
@@ -34,6 +35,14 @@ on Friday at 18:00; nobody starts with a pre-built project.
 - Submission: one Devpost project by **Sat 2026-10-17 22:00**, no extensions,
   with deck, demo video, code and teammates.
 - Three twists change the problem; answer each within 6 hours on the portal.
+
+Twist 3 update (announcement relayed by the user Sat 2026-10-17): submit a
+poster with Devpost by **Sat 2026-10-17 22:00 PT** for printing for Sunday's
+demo day. The poster upload field is announced to be available by
+**Sat 2026-10-17 13:00 PT**; its availability and file specifications have
+not been checked. The announcement also reiterates that the four open
+awards, including Best Demo, are open to non-finalists. Exact text and the
+separate portal-response timing are in [problem/twists.md](problem/twists.md#twist-3).
 
 ## Schedule
 

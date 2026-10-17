@@ -1,0 +1,505 @@
+{
+  "checked_at_utc": "2026-10-17T07:12:01.549923+00:00",
+  "path": "data/raw/austintexas/apd-911-calls-for-service-e687-fx2y/APD_911_Calls_for_Service_2023-2026_20261016.csv",
+  "bytes": 345751451,
+  "sha256": "c583f07a9fa83a7b36e30aff4c0c516d20079690327919f1b78a44f00205369b",
+  "rows": 1074633,
+  "columns": 25,
+  "headers_match_official_metadata": true,
+  "encoding": "UTF-8 (utf-8-sig decoder; strict)",
+  "csv_parse_completed": true,
+  "csv_width_error_count": 0,
+  "csv_width_error_row_examples": [],
+  "completely_empty_rows": 0,
+  "unique_incident_numbers": 1074608,
+  "duplicate_incident_number_rows": 25,
+  "numeric_format": "Comma thousands separators; optional decimal fraction",
+  "datetime_format": "%Y %b %d %I:%M:%S %p",
+  "timestamp_timezone": "Not encoded in CSV; no timezone conversion performed",
+  "monthly_rows": {
+    "2023-01": 23094,
+    "2023-02": 22210,
+    "2023-03": 25012,
+    "2023-04": 23305,
+    "2023-05": 25331,
+    "2023-06": 24848,
+    "2023-07": 24726,
+    "2023-08": 24839,
+    "2023-09": 23651,
+    "2023-10": 24167,
+    "2023-11": 22112,
+    "2023-12": 22850,
+    "2024-01": 22413,
+    "2024-02": 22240,
+    "2024-03": 24807,
+    "2024-04": 23910,
+    "2024-05": 25447,
+    "2024-06": 24490,
+    "2024-07": 24612,
+    "2024-08": 24674,
+    "2024-09": 23563,
+    "2024-10": 24545,
+    "2024-11": 22889,
+    "2024-12": 22445,
+    "2025-01": 21875,
+    "2025-02": 21408,
+    "2025-03": 25070,
+    "2025-04": 24165,
+    "2025-05": 26035,
+    "2025-06": 23581,
+    "2025-07": 24487,
+    "2025-08": 25187,
+    "2025-09": 23909,
+    "2025-10": 24684,
+    "2025-11": 22635,
+    "2025-12": 22629,
+    "2026-01": 22019,
+    "2026-02": 20963,
+    "2026-03": 23971,
+    "2026-04": 23528,
+    "2026-05": 25781,
+    "2026-06": 24973,
+    "2026-07": 24949,
+    "2026-08": 25607,
+    "2026-09": 24997
+  },
+  "priority_counts": {
+    "Priority 3": 209923,
+    "Priority 0": 145265,
+    "Priority 2": 528361,
+    "Priority 1": 191084
+  },
+  "incident_type_counts": {
+    "Dispatched Incident": 1074633
+  },
+  "consistency_findings": {
+    "closure_before_arrival": 24,
+    "closure_before_response": 13,
+    "arrival_before_response": 1,
+    "unexpected_priority_label": 0,
+    "day_of_week_mismatch": 0,
+    "response_hour_mismatch": 0
+  },
+  "fields": {
+    "Incident Number": {
+      "api_field": "incident_number",
+      "source_type": "text",
+      "empty": 0,
+      "invalid_type": 0
+    },
+    "Incident Type": {
+      "api_field": "incident_type",
+      "source_type": "text",
+      "empty": 0,
+      "invalid_type": 0
+    },
+    "Mental Health Flag": {
+      "api_field": "mental_health_flag",
+      "source_type": "text",
+      "empty": 0,
+      "invalid_type": 0
+    },
+    "Priority Level": {
+      "api_field": "priority_level",
+      "source_type": "text",
+      "empty": 0,
+      "invalid_type": 0
+    },
+    "Response Datetime": {
+      "api_field": "response_datetime",
+      "source_type": "calendar_date",
+      "empty": 0,
+      "invalid_type": 0,
+      "min": "2023-01-01T00:01:00",
+      "max": "2026-09-30T23:59:17"
+    },
+    "Response Day of Week": {
+      "api_field": "response_day_of_week",
+      "source_type": "text",
+      "empty": 0,
+      "invalid_type": 0
+    },
+    "Response Hour": {
+      "api_field": "response_hour",
+      "source_type": "number",
+      "empty": 0,
+      "invalid_type": 0,
+      "min": 0.0,
+      "max": 23.0
+    },
+    "First Unit Arrived Datetime": {
+      "api_field": "first_unit_arrived_datetime",
+      "source_type": "calendar_date",
+      "empty": 0,
+      "invalid_type": 0,
+      "min": "2023-01-01T00:08:02",
+      "max": "2026-10-01T05:20:35"
+    },
+    "Call Closed Datetime": {
+      "api_field": "call_closed_datetime",
+      "source_type": "calendar_date",
+      "empty": 5,
+      "invalid_type": 0,
+      "min": "2023-01-01T00:25:17",
+      "max": "2026-10-01T13:08:18"
+    },
+    "Sector": {
+      "api_field": "sector",
+      "source_type": "text",
+      "empty": 0,
+      "invalid_type": 0
+    },
+    "Initial Problem Description": {
+      "api_field": "initial_problem_description",
+      "source_type": "text",
+      "empty": 0,
+      "invalid_type": 0
+    },
+    "Initial Problem Category": {
+      "api_field": "initial_problem_category",
+      "source_type": "text",
+      "empty": 0,
+      "invalid_type": 0
+    },
+    "Final Problem Description": {
+      "api_field": "final_problem_description",
+      "source_type": "text",
+      "empty": 0,
+      "invalid_type": 0
+    },
+    "Final Problem Category": {
+      "api_field": "final_problem_category",
+      "source_type": "text",
+      "empty": 0,
+      "invalid_type": 0
+    },
+    "Number of Units Arrived": {
+      "api_field": "number_of_units_arrived",
+      "source_type": "number",
+      "empty": 0,
+      "invalid_type": 0,
+      "min": 1.0,
+      "max": 101.0
+    },
+    "Unit Time on Scene": {
+      "api_field": "unit_time_on_scene",
+      "source_type": "number",
+      "empty": 19,
+      "invalid_type": 0,
+      "min": 0.0,
+      "max": 2460453.0
+    },
+    "Call Disposition Description": {
+      "api_field": "call_disposition_description",
+      "source_type": "text",
+      "empty": 0,
+      "invalid_type": 0
+    },
+    "Report Written Flag": {
+      "api_field": "report_written_flag",
+      "source_type": "text",
+      "empty": 0,
+      "invalid_type": 0
+    },
+    "Response Time": {
+      "api_field": "response_time",
+      "source_type": "number",
+      "empty": 0,
+      "invalid_type": 0,
+      "min": 0.0,
+      "max": 182878.0
+    },
+    "Officer Injured/Killed Count": {
+      "api_field": "officer_injured_killed_count",
+      "source_type": "number",
+      "empty": 0,
+      "invalid_type": 0,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "Subject Injured/Killed Count": {
+      "api_field": "subject_injured_killed_count",
+      "source_type": "number",
+      "empty": 0,
+      "invalid_type": 0,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "Other Injured/Killed Count": {
+      "api_field": "other_injured_killed_count",
+      "source_type": "number",
+      "empty": 0,
+      "invalid_type": 0,
+      "min": 0.0,
+      "max": 3.0
+    },
+    "Geo ID": {
+      "api_field": "geoid",
+      "source_type": "text",
+      "empty": 7,
+      "invalid_type": 0
+    },
+    "Census Block Group": {
+      "api_field": "blkgpnm",
+      "source_type": "text",
+      "empty": 7,
+      "invalid_type": 0
+    },
+    "Council District": {
+      "api_field": "council_district",
+      "source_type": "text",
+      "empty": 0,
+      "invalid_type": 0
+    }
+  },
+  "limitations": [
+    "Local SHA-256 is a baseline; publisher did not supply an export checksum.",
+    "Source aggregate agreement is not a row-by-row comparison."
+  ],
+  "duplicate_detail": {
+    "duplicate_incident_groups": 25,
+    "rows_in_duplicate_incident_groups": 50,
+    "exact_duplicate_rows": 0,
+    "incident_groups_with_different_field_values": 25,
+    "differing_columns": [
+      "Call Closed Datetime",
+      "Call Disposition Description",
+      "Census Block Group",
+      "Council District",
+      "Final Problem Category",
+      "Final Problem Description",
+      "First Unit Arrived Datetime",
+      "Geo ID",
+      "Initial Problem Category",
+      "Initial Problem Description",
+      "Mental Health Flag",
+      "Number of Units Arrived",
+      "Priority Level",
+      "Report Written Flag",
+      "Response Datetime",
+      "Response Hour",
+      "Response Time",
+      "Sector",
+      "Unit Time on Scene"
+    ]
+  },
+  "official_comparison": {
+    "total_rows_match": true,
+    "distinct_incident_numbers_match": true,
+    "earliest_response_matches": true,
+    "latest_response_matches": true,
+    "all_month_counts_match": true,
+    "months_compared": 45,
+    "summary": {
+      "checked_at_utc": "2026-10-17T07:10:42.7605867Z",
+      "url": "https://datahub.austintexas.gov/resource/e687-fx2y.json?$select=count%28%2A%29%20as%20rows%2Ccount%28distinct%20incident_number%29%20as%20unique_incidents%2Cmin%28response_datetime%29%20as%20earliest%2Cmax%28response_datetime%29%20as%20latest",
+      "result": [
+        {
+          "rows": "1074633",
+          "unique_incidents": "1074608",
+          "earliest": "2023-01-01T00:01:00",
+          "latest": "2026-09-30T23:59:17"
+        }
+      ]
+    },
+    "monthly": {
+      "checked_at_utc": "2026-10-17T07:10:46.7546031Z",
+      "url": "https://datahub.austintexas.gov/resource/e687-fx2y.json?$select=date_trunc_ym%28response_datetime%29%20as%20month%2Ccount%28%2A%29%20as%20rows&$group=date_trunc_ym%28response_datetime%29&$order=month",
+      "result": [
+        {
+          "month": "2023-01-01T00:00:00",
+          "rows": "23094"
+        },
+        {
+          "month": "2023-02-01T00:00:00",
+          "rows": "22210"
+        },
+        {
+          "month": "2023-03-01T00:00:00",
+          "rows": "25012"
+        },
+        {
+          "month": "2023-04-01T00:00:00",
+          "rows": "23305"
+        },
+        {
+          "month": "2023-05-01T00:00:00",
+          "rows": "25331"
+        },
+        {
+          "month": "2023-06-01T00:00:00",
+          "rows": "24848"
+        },
+        {
+          "month": "2023-07-01T00:00:00",
+          "rows": "24726"
+        },
+        {
+          "month": "2023-08-01T00:00:00",
+          "rows": "24839"
+        },
+        {
+          "month": "2023-09-01T00:00:00",
+          "rows": "23651"
+        },
+        {
+          "month": "2023-10-01T00:00:00",
+          "rows": "24167"
+        },
+        {
+          "month": "2023-11-01T00:00:00",
+          "rows": "22112"
+        },
+        {
+          "month": "2023-12-01T00:00:00",
+          "rows": "22850"
+        },
+        {
+          "month": "2024-01-01T00:00:00",
+          "rows": "22413"
+        },
+        {
+          "month": "2024-02-01T00:00:00",
+          "rows": "22240"
+        },
+        {
+          "month": "2024-03-01T00:00:00",
+          "rows": "24807"
+        },
+        {
+          "month": "2024-04-01T00:00:00",
+          "rows": "23910"
+        },
+        {
+          "month": "2024-05-01T00:00:00",
+          "rows": "25447"
+        },
+        {
+          "month": "2024-06-01T00:00:00",
+          "rows": "24490"
+        },
+        {
+          "month": "2024-07-01T00:00:00",
+          "rows": "24612"
+        },
+        {
+          "month": "2024-08-01T00:00:00",
+          "rows": "24674"
+        },
+        {
+          "month": "2024-09-01T00:00:00",
+          "rows": "23563"
+        },
+        {
+          "month": "2024-10-01T00:00:00",
+          "rows": "24545"
+        },
+        {
+          "month": "2024-11-01T00:00:00",
+          "rows": "22889"
+        },
+        {
+          "month": "2024-12-01T00:00:00",
+          "rows": "22445"
+        },
+        {
+          "month": "2025-01-01T00:00:00",
+          "rows": "21875"
+        },
+        {
+          "month": "2025-02-01T00:00:00",
+          "rows": "21408"
+        },
+        {
+          "month": "2025-03-01T00:00:00",
+          "rows": "25070"
+        },
+        {
+          "month": "2025-04-01T00:00:00",
+          "rows": "24165"
+        },
+        {
+          "month": "2025-05-01T00:00:00",
+          "rows": "26035"
+        },
+        {
+          "month": "2025-06-01T00:00:00",
+          "rows": "23581"
+        },
+        {
+          "month": "2025-07-01T00:00:00",
+          "rows": "24487"
+        },
+        {
+          "month": "2025-08-01T00:00:00",
+          "rows": "25187"
+        },
+        {
+          "month": "2025-09-01T00:00:00",
+          "rows": "23909"
+        },
+        {
+          "month": "2025-10-01T00:00:00",
+          "rows": "24684"
+        },
+        {
+          "month": "2025-11-01T00:00:00",
+          "rows": "22635"
+        },
+        {
+          "month": "2025-12-01T00:00:00",
+          "rows": "22629"
+        },
+        {
+          "month": "2026-01-01T00:00:00",
+          "rows": "22019"
+        },
+        {
+          "month": "2026-02-01T00:00:00",
+          "rows": "20963"
+        },
+        {
+          "month": "2026-03-01T00:00:00",
+          "rows": "23971"
+        },
+        {
+          "month": "2026-04-01T00:00:00",
+          "rows": "23528"
+        },
+        {
+          "month": "2026-05-01T00:00:00",
+          "rows": "25781"
+        },
+        {
+          "month": "2026-06-01T00:00:00",
+          "rows": "24973"
+        },
+        {
+          "month": "2026-07-01T00:00:00",
+          "rows": "24949"
+        },
+        {
+          "month": "2026-08-01T00:00:00",
+          "rows": "25607"
+        },
+        {
+          "month": "2026-09-01T00:00:00",
+          "rows": "24997"
+        }
+      ]
+    }
+  },
+  "supporting_snapshots": [
+    {
+      "path": "data/raw/austintexas/apd-911-calls-for-service-e687-fx2y/source-summary.json",
+      "bytes": 494,
+      "sha256": "2e6e664785b8336ad5400e13c370f2e8810a08794675a79fe6c9e3ab402f6c22"
+    },
+    {
+      "path": "data/raw/austintexas/apd-911-calls-for-service-e687-fx2y/source-monthly-counts.json",
+      "bytes": 3756,
+      "sha256": "6e98e91378b65c668fb1898a7558b24fc9517af3116b47bf8d61dde3e8101f30"
+    }
+  ],
+  "independent_sha256_check": "PowerShell Get-FileHash matched the Python hashlib result"
+}

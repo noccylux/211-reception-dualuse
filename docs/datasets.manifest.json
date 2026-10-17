@@ -1,0 +1,277 @@
+{
+  "downloaded_at_utc": "2026-10-17T07:02:04.0463825Z",
+  "datasets": [
+    {
+      "id": "spikecodes/911-call-transcripts",
+      "source_url": "https://huggingface.co/datasets/spikecodes/911-call-transcripts",
+      "revision": "acd57afccb0688c3b3f4417eaec6b704a87aff89",
+      "license": "MIT (dataset card)",
+      "files": [
+        {
+          "path": "data/raw/spikecodes/911-call-transcripts/.gitattributes",
+          "url": "https://huggingface.co/datasets/spikecodes/911-call-transcripts/resolve/acd57afccb0688c3b3f4417eaec6b704a87aff89/.gitattributes",
+          "bytes": 2307,
+          "sha256": "f4e703ea6e44bbebe53aceed2a89c11e40b88b7ae130c480c89860ab805ffc8f",
+          "git_blob_sha1": "28df5f900b358436f0267334b3e3e9af33f917ba"
+        },
+        {
+          "path": "data/raw/spikecodes/911-call-transcripts/README.md",
+          "url": "https://huggingface.co/datasets/spikecodes/911-call-transcripts/resolve/acd57afccb0688c3b3f4417eaec6b704a87aff89/README.md",
+          "bytes": 24,
+          "sha256": "d8d7a46d41a1a37fe4f0a5f637bf55c649310185329127d8a2204632e480be17",
+          "git_blob_sha1": "7be5fc7f47d5db027d120b8024982df93db95b74"
+        },
+        {
+          "path": "data/raw/spikecodes/911-call-transcripts/calls.jsonl",
+          "url": "https://huggingface.co/datasets/spikecodes/911-call-transcripts/resolve/acd57afccb0688c3b3f4417eaec6b704a87aff89/calls.jsonl",
+          "bytes": 2083650,
+          "sha256": "34e409a2dd2259f2f1234b06b87cb72186bf9b9711d1ab1cad37dd838628e497",
+          "git_blob_sha1": "583a6722ccfd9563f654e23e3a6298e4bf1e0c80"
+        }
+      ]
+    },
+    {
+      "id": "rmunro/disaster_response_messages",
+      "source_url": "https://github.com/rmunro/disaster_response_messages",
+      "revision": "1657e1c4e11acbfa56241d2b5cd627adbd989ca2",
+      "license": "CC-BY-4.0",
+      "files": [
+        {
+          "path": "data/raw/rmunro/disaster_response_messages/LICENSE",
+          "url": "https://raw.githubusercontent.com/rmunro/disaster_response_messages/1657e1c4e11acbfa56241d2b5cd627adbd989ca2/LICENSE",
+          "bytes": 18650,
+          "sha256": "7e7170e3cebf88a9f60c7b8421418323c09304da1af4d5e90f4da1dc1c8a2661",
+          "git_blob_sha1": "2f244ac814036ecd9ba9f69782e89ce6b1dca9eb"
+        },
+        {
+          "path": "data/raw/rmunro/disaster_response_messages/README.md",
+          "url": "https://raw.githubusercontent.com/rmunro/disaster_response_messages/1657e1c4e11acbfa56241d2b5cd627adbd989ca2/README.md",
+          "bytes": 22016,
+          "sha256": "ec3e3df17e505de2746776115b76da2395d5d4b3da574406e916aef28d4ef19f",
+          "git_blob_sha1": "ef44f2a9fae7e74bc651deaf9b94339e15471c28"
+        },
+        {
+          "path": "data/raw/rmunro/disaster_response_messages/disaster_response_test.csv",
+          "url": "https://raw.githubusercontent.com/rmunro/disaster_response_messages/1657e1c4e11acbfa56241d2b5cd627adbd989ca2/disaster_response_test.csv",
+          "bytes": 716510,
+          "sha256": "566402713139ad7c910737cf5f18f3fef9ba6cc711b6aa5054c65e3fa0ecfc48",
+          "git_blob_sha1": "53da32006d6ad04a793e5bcf82acbd34b2102aa3"
+        },
+        {
+          "path": "data/raw/rmunro/disaster_response_messages/disaster_response_training.csv",
+          "url": "https://raw.githubusercontent.com/rmunro/disaster_response_messages/1657e1c4e11acbfa56241d2b5cd627adbd989ca2/disaster_response_training.csv",
+          "bytes": 5722662,
+          "sha256": "3fd06465488100a51f97f60b3e27eb58bf8dfda568ee92ec6e574e78c84b12dd",
+          "git_blob_sha1": "a201855f62d71ac60aa23486e0891adcb8ae4798"
+        },
+        {
+          "path": "data/raw/rmunro/disaster_response_messages/disaster_response_validation.csv",
+          "url": "https://raw.githubusercontent.com/rmunro/disaster_response_messages/1657e1c4e11acbfa56241d2b5cd627adbd989ca2/disaster_response_validation.csv",
+          "bytes": 736486,
+          "sha256": "2c6d4424e812b068ca2486a3c1b35bc0aea445643d922657e3023ae60387bc0b",
+          "git_blob_sha1": "3e89d841d14d5bcf856250abb131f679162a22f6"
+        }
+      ]
+    },
+    {
+      "id": "n8maxey/911project",
+      "source_url": "https://github.com/n8maxey/911project",
+      "revision": "b7fb2d3e9a28d328d39a6e9cff2f37db83b422ea",
+      "license": "No license file in source repository",
+      "files": [
+        {
+          "path": "data/raw/n8maxey/911project/911_metadata.csv",
+          "url": "https://raw.githubusercontent.com/n8maxey/911project/b7fb2d3e9a28d328d39a6e9cff2f37db83b422ea/911_metadata.csv",
+          "bytes": 340244,
+          "sha256": "6cedd1e60c74759135c98744fe295721fa0689bf364bf9b898c22fb579f48ec6",
+          "git_blob_sha1": "20272763d3ab4ac61416624df4b533743b54bfb7"
+        },
+        {
+          "path": "data/raw/n8maxey/911project/911_project.pdf",
+          "url": "https://raw.githubusercontent.com/n8maxey/911project/b7fb2d3e9a28d328d39a6e9cff2f37db83b422ea/911_project.pdf",
+          "bytes": 109336,
+          "sha256": "72277f29d86f0a6b32619374a4cb14d32466f56d8e38ec86480823c658651760",
+          "git_blob_sha1": "8d326335e83412b3e34d88bd521b9b823ffe6932"
+        },
+        {
+          "path": "data/raw/n8maxey/911project/911network.Rmd",
+          "url": "https://raw.githubusercontent.com/n8maxey/911project/b7fb2d3e9a28d328d39a6e9cff2f37db83b422ea/911network.Rmd",
+          "bytes": 11812,
+          "sha256": "0aa8d3ed725f64e549df85049625236cc4085593c6baf8b83001e4ac68637982",
+          "git_blob_sha1": "c51b9e8d8e5ceb63754e5a3f14cd5ce63420ab9e"
+        },
+        {
+          "path": "data/raw/n8maxey/911project/README.md",
+          "url": "https://raw.githubusercontent.com/n8maxey/911project/b7fb2d3e9a28d328d39a6e9cff2f37db83b422ea/README.md",
+          "bytes": 2232,
+          "sha256": "e3148242187b8b7e154c45233c428ba6d28695f17356bd4773d5dd611ddbe9d8",
+          "git_blob_sha1": "fa393c36dadc694062cdb6a56639f5bc324ee452"
+        }
+      ]
+    }
+  ],
+  "manual_sources": [
+    {
+      "id": "austintexas/e687-fx2y",
+      "name": "APD 911 Calls for Service 2023-2026",
+      "source_url": "https://datahub.austintexas.gov/Public-Safety/APD-911-Calls-for-Service-2023-2026/e687-fx2y/about_data",
+      "local_directory": "data/raw/austintexas/apd-911-calls-for-service-e687-fx2y",
+      "acquisition": "Manual CSV export supplied by the user; original bytes and filename retained",
+      "verification_status": "Full CSV structure and source aggregates verified; data-quality findings documented",
+      "files": [
+        {
+          "path": "data/raw/austintexas/apd-911-calls-for-service-e687-fx2y/APD_911_Calls_for_Service_2023-2026_20261016.csv",
+          "bytes": 345751451,
+          "sha256": "c583f07a9fa83a7b36e30aff4c0c516d20079690327919f1b78a44f00205369b",
+          "format": "csv",
+          "rows": 1074633,
+          "columns": 25,
+          "response_datetime_min": "2023-01-01T00:01:00",
+          "response_datetime_max": "2026-09-30T23:59:17"
+        }
+      ],
+      "license_id": "PUBLIC_DOMAIN",
+      "attribution": "City of Austin, Texas - data.austintexas.gov",
+      "terms_url": "https://data.austintexas.gov/stories/s/ranj-cccq",
+      "update_frequency": "Monthly",
+      "publisher_time_range": "January 1, 2023 - September 30, 2026",
+      "source_rows_updated_at_unix": 1791546628,
+      "metadata_snapshot": {
+        "url": "https://datahub.austintexas.gov/api/views/e687-fx2y.json",
+        "retrieved_at_utc": "2026-10-17T07:07:18.7642440Z",
+        "path": "data/raw/austintexas/apd-911-calls-for-service-e687-fx2y/source-metadata.json",
+        "bytes": 52069,
+        "sha256": "9b1e8cf4fcca4f3971392b0a88b51df2e012c5346bec13234e31ec9f3e643cf0"
+      },
+      "columns": [
+        {
+          "name": "Incident Number",
+          "fieldName": "incident_number",
+          "dataTypeName": "text"
+        },
+        {
+          "name": "Incident Type",
+          "fieldName": "incident_type",
+          "dataTypeName": "text"
+        },
+        {
+          "name": "Mental Health Flag",
+          "fieldName": "mental_health_flag",
+          "dataTypeName": "text"
+        },
+        {
+          "name": "Priority Level",
+          "fieldName": "priority_level",
+          "dataTypeName": "text"
+        },
+        {
+          "name": "Response Datetime",
+          "fieldName": "response_datetime",
+          "dataTypeName": "calendar_date"
+        },
+        {
+          "name": "Response Day of Week",
+          "fieldName": "response_day_of_week",
+          "dataTypeName": "text"
+        },
+        {
+          "name": "Response Hour",
+          "fieldName": "response_hour",
+          "dataTypeName": "number"
+        },
+        {
+          "name": "First Unit Arrived Datetime",
+          "fieldName": "first_unit_arrived_datetime",
+          "dataTypeName": "calendar_date"
+        },
+        {
+          "name": "Call Closed Datetime",
+          "fieldName": "call_closed_datetime",
+          "dataTypeName": "calendar_date"
+        },
+        {
+          "name": "Sector",
+          "fieldName": "sector",
+          "dataTypeName": "text"
+        },
+        {
+          "name": "Initial Problem Description",
+          "fieldName": "initial_problem_description",
+          "dataTypeName": "text"
+        },
+        {
+          "name": "Initial Problem Category",
+          "fieldName": "initial_problem_category",
+          "dataTypeName": "text"
+        },
+        {
+          "name": "Final Problem Description",
+          "fieldName": "final_problem_description",
+          "dataTypeName": "text"
+        },
+        {
+          "name": "Final Problem Category",
+          "fieldName": "final_problem_category",
+          "dataTypeName": "text"
+        },
+        {
+          "name": "Number of Units Arrived",
+          "fieldName": "number_of_units_arrived",
+          "dataTypeName": "number"
+        },
+        {
+          "name": "Unit Time on Scene",
+          "fieldName": "unit_time_on_scene",
+          "dataTypeName": "number"
+        },
+        {
+          "name": "Call Disposition Description",
+          "fieldName": "call_disposition_description",
+          "dataTypeName": "text"
+        },
+        {
+          "name": "Report Written Flag",
+          "fieldName": "report_written_flag",
+          "dataTypeName": "text"
+        },
+        {
+          "name": "Response Time",
+          "fieldName": "response_time",
+          "dataTypeName": "number"
+        },
+        {
+          "name": "Officer Injured/Killed Count",
+          "fieldName": "officer_injured_killed_count",
+          "dataTypeName": "number"
+        },
+        {
+          "name": "Subject Injured/Killed Count",
+          "fieldName": "subject_injured_killed_count",
+          "dataTypeName": "number"
+        },
+        {
+          "name": "Other Injured/Killed Count",
+          "fieldName": "other_injured_killed_count",
+          "dataTypeName": "number"
+        },
+        {
+          "name": "Geo ID",
+          "fieldName": "geoid",
+          "dataTypeName": "text"
+        },
+        {
+          "name": "Census Block Group",
+          "fieldName": "blkgpnm",
+          "dataTypeName": "text"
+        },
+        {
+          "name": "Council District",
+          "fieldName": "council_district",
+          "dataTypeName": "text"
+        }
+      ],
+      "verified_at_utc": "2026-10-17T07:12:01.549923+00:00",
+      "validation_report": "docs/datasets.austin-validation.json"
+    }
+  ]
+}

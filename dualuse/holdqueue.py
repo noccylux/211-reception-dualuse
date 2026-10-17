@@ -265,8 +265,8 @@ class HoldQueue:
             raise ValueError("utterance must contain 1 to 4000 characters")
         with self._lock:
             call = self._calls[call_id]
-            if call.status != "waiting" or call.processing:
-                raise Conflict("Call is not waiting or an interview turn is already running")
+            if call.status not in ("waiting", "connecting", "handed_off") or call.processing:
+                raise Conflict("Call is not active or an interview turn is already running")
             if sum(len(t) for t in call.transcript) + len(text) > 32000:
                 raise ValueError("Conversation limit reached; ask an operator to take this call")
             call.transcript.append(text)
@@ -274,8 +274,13 @@ class HoldQueue:
             call.last_activity, call.silence_count = self.now(), 0
             call.version += 1
             version, mode = call.version, self.mode
-            call.processing = mode != "fifo"
+            call.processing = mode != "fifo" and call.status == "waiting"
             self._log(call, "caller_message", "New information received")
+            if call.status != "waiting":
+                # Voice transfer is not connected: the operator still needs these words.
+                self._unread(call, "Recorded during operator takeover without classification")
+                self._save()
+                return call
             if mode == "fifo":
                 call.source = "none"
                 self._unread(call, "Recorded in FIFO mode without classification")

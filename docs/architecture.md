@@ -73,9 +73,10 @@ Retell voice bridge ([voice.md](voice.md)), labeled origin `phone`. Design and h
    line, then the agent's reply follows. The caller's language is kept, so all
    later desk lines use it.
 
-The offline keyword mode reads English only. Text in Chinese, Korean, Japanese,
-Arabic, Armenian or Cyrillic stays UNKNOWN with a review flag naming the
-language. FIFO mode records messages without classifying them.
+The offline keyword mode reads English only. A detected unsupported language
+gets a review flag and cannot be ranked NORMAL using earlier routine keywords.
+The call stays UNKNOWN unless the transcript already supports PRIORITY or
+IMMEDIATE. FIFO mode records messages without classifying them.
 
 ## Lifecycle and concurrency
 
@@ -88,6 +89,13 @@ can also end as `hung_up` or `disconnected`.
   review and raises a NORMAL call to UNKNOWN.
 - Reservation is atomic within the one API process. A failed transfer returns
   the call with its original arrival. Reservations do not expire yet.
+- Messages during `connecting` or `handed_off` are saved without another model
+  interview and flagged for operator review; NORMAL becomes UNKNOWN. The bridge
+  forwards buffered speech in both states. The handoff history remains a snapshot
+  at confirmation; the call's full conversation includes later messages.
+- The voice bridge marks a call ended only after the desk acknowledges departure
+  or reports that it already left the queue. Failed webhook requests remain
+  retryable and do not cancel the pending disconnect grace task.
 - Hang-ups and disconnects keep the conversation. Disconnects, silent hang-ups
   and IMMEDIATE, PRIORITY or UNKNOWN callers who leave get a callback review
   task; no number is collected and nothing is dialed.

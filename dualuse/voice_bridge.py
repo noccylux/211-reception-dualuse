@@ -57,6 +57,7 @@ class Line:
         self.interrupts = 0
         self.ws: WebSocket | None = None
         self.send_lock = asyncio.Lock()
+        self.end_lock = asyncio.Lock()
         self.turn: asyncio.Task | None = None
         self.watcher: asyncio.Task | None = None
         self.grace: asyncio.Task | None = None
@@ -112,7 +113,7 @@ def create_app(desk: httpx.AsyncClient, ws_secret: str, retell_api_key: str, *,
                 if call["status"] != "waiting":
                     line.spoken = len(call["dialogue"])
                     await line.respond(HANDOFF)
-                    return
+                    continue
                 if response.status_code == 409:
                     raise RuntimeError(f"desk refused a turn for waiting call {line.desk_id}: {response.text}")
                 if line.pending:
@@ -163,15 +164,17 @@ def create_app(desk: httpx.AsyncClient, ws_secret: str, retell_api_key: str, *,
 
     async def end(retell_id: str, disconnected: bool):
         line = lines[retell_id]
-        if line.ended:
-            return
-        line.ended = True
-        path = "disconnect" if disconnected else "hangup"
-        response = await desk.post(f"/calls/{line.desk_id}/{path}")
-        if response.status_code == 409:
-            log.info("desk call %s had already left the queue: %s", line.desk_id, response.text)
-        else:
-            response.raise_for_status()
+        async with line.end_lock:
+            if line.ended:
+                return
+            path = "disconnect" if disconnected else "hangup"
+            response = await desk.post(f"/calls/{line.desk_id}/{path}")
+            if response.status_code == 409:
+                log.info("desk call %s had already left the queue: %s", line.desk_id, response.text)
+            else:
+                response.raise_for_status()
+            # A failed request must remain retryable by the webhook or disconnect grace task.
+            line.ended = True
 
     async def end_after_grace(retell_id: str):
         await asyncio.sleep(end_grace_s)
@@ -215,7 +218,7 @@ def create_app(desk: httpx.AsyncClient, ws_secret: str, retell_api_key: str, *,
                     said = [t["content"] for t in message["transcript"] if t["role"] == "user"]
                     text = " ".join(s.strip() for s in said[line.forwarded:] if s.strip())
                     line.forwarded = len(said)
-                    if line.status != "waiting":
+                    if line.status not in ("waiting", "connecting", "handed_off"):
                         await line.respond(HANDOFF)
                     elif not text:
                         await line.respond("")
@@ -250,9 +253,9 @@ def create_app(desk: httpx.AsyncClient, ws_secret: str, retell_api_key: str, *,
             log.warning("call_ended for unknown Retell call %s (bridge restarted?)", retell_id)
             return {"ignored": "unknown call"}
         line = lines[retell_id]
+        await end(retell_id, disconnected=event["call"].get("disconnection_reason") != "user_hangup")
         if line.grace:
             line.grace.cancel()
-        await end(retell_id, disconnected=event["call"].get("disconnection_reason") != "user_hangup")
         return {"desk_call": line.desk_id}
 
     return app

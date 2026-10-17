@@ -1,4 +1,5 @@
 """The bridge drives the real desk API in-process; Retell is played by the test."""
+import asyncio
 import hashlib
 import hmac
 import json
@@ -218,7 +219,8 @@ def test_an_operator_reservation_interrupts_the_caller_once(bridge, desk):
         ws.send_json(turn(1, "hello?"))
         reply = final_response(ws)
         assert reply["content"] == HANDOFF
-        assert only_call(desk)["transcript"] == []
+        assert only_call(desk)["transcript"] == ["hello?"]
+        assert "operator takeover" in only_call(desk)["attention"]
 
 
 @pytest.mark.parametrize("reason, status", [("user_hangup", "hung_up"), ("error_llm_websocket_open", "disconnected")])
@@ -261,3 +263,105 @@ def test_signatures_outside_five_minutes_are_rejected():
     stale = signed(body, at_ms=now - 301_000)["X-Retell-Signature"]
     assert not verify_signature(body, stale, KEY, now)
     assert not verify_signature(body, None, KEY, now)
+
+
+@pytest.mark.parametrize("success", [False, True])
+def test_speech_during_reservation_is_kept_after_transfer_outcome(bridge, desk, success):
+    with connect(bridge) as ws:
+        opened(ws)
+        reserved = desk.post("/operator/free").json()["handoff"]
+        assert ws.receive_json()["response_type"] == "agent_interrupt"
+        text = "My child is not breathing"
+        ws.send_json(turn(1, text))
+        assert final_response(ws)["content"] == HANDOFF
+        assert desk.post(f"/handoffs/{reserved['transfer_id']}/confirm", json={"success": success}).status_code == 200
+        ws.send_json(turn(2, text, "Please hurry"))
+        final_response(ws)
+        call = only_call(desk)
+        assert call["transcript"] == [text, "Please hurry"]
+        assert "operator takeover" in call["attention"]
+        if success:
+            assert call["status"] == "handed_off"
+            assert desk.get("/state").json()["handoffs"][0]["transcript"] == [text]
+        else:
+            assert call["status"] == "waiting" and call["tier"] == "immediate"
+
+
+@pytest.mark.parametrize("failure", ["503", "timeout", "lost_reply"])
+def test_failed_call_ended_request_can_retry_and_successful_repeats_are_idempotent(desk, failure):
+    real = httpx.ASGITransport(app=api.app)
+    attempts = []
+
+    async def transport(request):
+        if request.url.path.endswith("/hangup"):
+            attempts.append(request.url.path)
+            if len(attempts) == 1:
+                if failure == "503":
+                    return httpx.Response(503, json={"detail": "temporarily unavailable"})
+                if failure == "lost_reply":
+                    await real.handle_async_request(request)
+                raise httpx.ReadTimeout("simulated timeout", request=request)
+        return await real.handle_async_request(request)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(transport), base_url="http://desk")
+    with TestClient(create_app(client, SECRET, KEY), raise_server_exceptions=False) as bridge:
+        with connect(bridge) as ws:
+            opened(ws)
+            body = ended("retell-1", "user_hangup")
+            assert bridge.post("/retell-webhook", content=body, headers=signed(body)).status_code == 500
+            assert bridge.post("/retell-webhook", content=body, headers=signed(body)).status_code == 200
+            assert bridge.post("/retell-webhook", content=body, headers=signed(body)).status_code == 200
+            assert len(attempts) == 2
+            assert only_call(desk)["status"] == "hung_up"
+            assert len(desk.get("/state").json()["departed"]) == 1
+
+
+def test_failed_webhook_does_not_cancel_disconnect_compensation(desk):
+    real = httpx.ASGITransport(app=api.app)
+
+    async def transport(request):
+        if request.url.path.endswith("/hangup"):
+            return httpx.Response(503, json={"detail": "temporarily unavailable"})
+        return await real.handle_async_request(request)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(transport), base_url="http://desk")
+    with TestClient(create_app(client, SECRET, KEY, end_grace_s=0.3), raise_server_exceptions=False) as bridge:
+        with connect(bridge) as ws:
+            opened(ws)
+        body = ended("retell-1", "user_hangup")
+        assert bridge.post("/retell-webhook", content=body, headers=signed(body)).status_code == 500
+        wait_for_status(desk, "disconnected")
+
+
+def test_multiple_buffered_turns_are_saved_during_takeover(desk):
+    real = httpx.ASGITransport(app=api.app)
+    started, release = threading.Event(), threading.Event()
+    turns = []
+
+    async def transport(request):
+        response = await real.handle_async_request(request)
+        if request.url.path.endswith("/say"):
+            turns.append(request.url.path)
+            if len(turns) == 1:
+                started.set()
+                assert await asyncio.to_thread(release.wait, 3)
+        return response
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(transport), base_url="http://desk")
+    with TestClient(create_app(client, SECRET, KEY, poll_s=0.02)) as bridge:
+        with connect(bridge) as ws:
+            opened(ws)
+            desk.post("/operator/free")
+            assert ws.receive_json()["response_type"] == "agent_interrupt"
+            ws.send_json(turn(1, "My child is not breathing"))
+            assert ws.receive_json()["content"] == ACK
+            assert started.wait(3)
+            ws.send_json(turn(2, "My child is not breathing", "We are upstairs"))
+            assert ws.receive_json()["content"] == ACK
+            release.set()
+            deadline = time.monotonic() + 3
+            while time.monotonic() < deadline and len(only_call(desk)["transcript"]) < 2:
+                time.sleep(0.01)
+            assert only_call(desk)["transcript"] == ["My child is not breathing", "We are upstairs"]
+            assert final_response(ws)["content"] == HANDOFF
+            assert final_response(ws)["content"] == HANDOFF

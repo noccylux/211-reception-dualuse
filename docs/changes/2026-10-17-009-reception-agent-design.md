@@ -148,6 +148,27 @@ Sat 2026-10-17 09:55 PT; implementation follows in this order.
 * Not verified: extraction accuracy on real data, latency under heavier load,
   the 12345 hotline facts, Retell voice.
 
+## Final review, Sat 2026-10-17 10:45-11:20 PT
+
+* A fresh reviewer checked `d413d5f..HEAD` and reported ten defects; all were
+  reproduced and fixed test-first (165 tests pass): whole-word matching had
+  dropped "gunshots", "gunfire" and "overdosed" from IMMEDIATE (high); offline
+  language detection used the whole conversation and misread Japanese; the
+  location check accepted digits inside other words and rejected street
+  abbreviations and split Chinese answers; FIFO-mode messages were never
+  flagged; review notes overwrote each other; a stale tab undid profile
+  switches; the welcome count changed meaning after classification; replies
+  promising dispatch were not caught; concurrent or reset surges misbehaved;
+  emoji codes and entities still rendered.
+* Browser after the fixes: the new welcome wording, "I hear gunshots outside
+  and my neighbor is bleeding" as IMMEDIATE with the 911 line, "12 Oak St"
+  kept as the location, and ":(" shown literally.
+* Still open from the morning review: offline mode reads ordinary requests
+  without a listed keyword as UNKNOWN and cannot read yes/no safety answers;
+  reservations do not expire; without an API key the model-mode selection
+  blanks the UI; silence and failed-turn tier changes are not separate audit
+  events.
+
 ## Verification plan
 
 * Each P0 fix gets a failing test first; model behavior uses stub clients;

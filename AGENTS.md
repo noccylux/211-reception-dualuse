@@ -24,7 +24,8 @@ needed. Invoke the matching skill or read the file; do not work from memory.
 - Every AI tool used is listed in the Devpost submission. Keep
   [docs/submission.md](docs/submission.md) current.
 - Hard deadline: Devpost submission Sat 2026-10-17 22:00 PT, no extensions.
-  Each twist must be answered within 6 hours on the portal.
+  Twist responses are submitted together with the final submission; the
+  organizers lifted the six-hour limit (user report, Sat 2026-10-17 09:50 PT).
 - Judging: dual-use fit (breaks ties), technical execution, feasibility and
   impact, adapting to twists, demo and pitch. The build must serve a civil
   use on an ordinary day and the same build, unchanged, in a crisis or

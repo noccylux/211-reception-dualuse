@@ -65,5 +65,5 @@ still uses synthetic calls and assumed classifier error rates. It does not
 measure Claude accuracy, real queue waits or trained-model performance. Real-data
 training/evaluation and Retell voice integration remain next steps.
 
-Details: [architecture](docs/architecture.md), [change record](docs/changes/2026-10-17-006-reception-agent.md),
+Details: [architecture](docs/architecture.md), [change record](docs/changes/2026-10-17-008-reception-agent.md),
 [event](docs/hackathon.md), [submission](docs/submission.md).

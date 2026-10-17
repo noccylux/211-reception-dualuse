@@ -104,4 +104,4 @@ annotate urgency examples, then connect Retell voice, silence/disconnect events
 and provider-confirmed human transfers to this lifecycle.
 
 Reproducible startup and walkthrough: [README](../README.md).
-Verification results: [change record](changes/2026-10-17-006-reception-agent.md).
+Verification results: [change record](changes/2026-10-17-008-reception-agent.md).

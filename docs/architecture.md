@@ -28,8 +28,9 @@ or emergency dispatch system. Design and history: change records
 ## What is never automated
 
 - The assistant never ends a call or places an outbound call.
-- Code, not the model, decides tier, queue order and handoff; the model may
-  restate only the desk facts it is given.
+- Code, not the model, decides tier, queue order and handoff. The model is told
+  to restate only the desk facts it is given; a reply promising dispatch, a
+  place in line or that no emergency call is needed is withheld for review.
 - A reported danger is told to call the profile's emergency number, by the desk
   itself; immediate danger stays flagged until a person reviews it.
 - Unknown information is ranked with priority, never as routine.

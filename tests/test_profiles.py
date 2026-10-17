@@ -42,3 +42,7 @@ def test_language_codes_reduce_to_their_primary_subtag():
 def test_both_profiles_are_registered_with_their_languages():
     assert PROFILES["la-211"].languages == ("en", "es", "zh")
     assert PROFILES["cn-12345"].languages[0] == "zh"
+
+
+def test_a_malformed_language_code_falls_back_to_english():
+    assert language_of("[verify](http://x)") == "en" and language_of("zh-Hans-CN") == "zh"

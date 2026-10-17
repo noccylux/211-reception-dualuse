@@ -71,17 +71,23 @@ def arrival_offsets(count: int, span_s: float, pattern: str, seed: int, austin_p
 
 
 def start_surge(queue: HoldQueue, callers: list[Caller], offsets: list[float], status: dict | None = None,
-                sleep=time.sleep, workers: int = 4) -> threading.Thread:
-    """Run the batch in the background; progress and every failure land in `status`."""
+                stop: threading.Event | None = None, sleep=time.sleep, workers: int = 4) -> threading.Thread:
+    """Run the batch in the background; progress and every failure land in `status`. Setting `stop`
+    (a desk reset does) keeps further callers from joining or speaking."""
     status = {} if status is None else status
+    stop = stop or threading.Event()
     status.update(planned=len(callers), joined=0, turns=0, errors=[])
     lock = threading.Lock()
 
     def converse(caller: Caller):
+        if stop.is_set():
+            return
         call = queue.add(origin=caller.origin)
         with lock:
             status["joined"] += 1
         for text in caller.lines:
+            if stop.is_set():
+                return
             try:
                 queue.say(call.call_id, text)
             except Conflict:
@@ -100,6 +106,8 @@ def start_surge(queue: HoldQueue, callers: list[Caller], offsets: list[float], s
             for offset, caller in sorted(zip(offsets, callers), key=lambda pair: pair[0]):
                 sleep(max(0.0, offset - previous))
                 previous = offset
+                if stop.is_set():
+                    break
                 pool.submit(converse, caller)
 
     thread = threading.Thread(target=run, daemon=True, name="live-surge")

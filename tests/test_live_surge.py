@@ -57,3 +57,15 @@ def test_the_api_injects_a_scripted_surge_in_rules_mode(monkeypatch):
     status = client.get("/demo/surge").json()
     assert status["joined"] == 5 and status["errors"] == []
     assert len(queue.snapshot()["calls"]) == 5
+
+
+def test_a_second_surge_is_refused_while_one_runs_and_reset_stops_it(monkeypatch):
+    queue = HoldQueue(1800, mode="rules")
+    monkeypatch.setattr(api, "QUEUE", queue)
+    client = TestClient(api.app)
+    body = {"count": 6, "source": "scripts", "pattern": "even", "span_s": 3, "seed": 1}
+    assert client.post("/demo/surge", json=body).status_code == 200
+    assert client.post("/demo/surge", json=body).status_code == 409
+    assert client.post("/reset", json={"mode": "rules"}).status_code == 200
+    api.SURGE["thread"].join(10)
+    assert queue.snapshot()["calls"] == []

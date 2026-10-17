@@ -1,6 +1,7 @@
 """211 reception API. One process per SQLite database; no telephone calls are placed."""
 import math
 import os
+import threading
 from dataclasses import asdict
 from pathlib import Path
 from typing import Literal
@@ -38,7 +39,8 @@ def default_mode() -> Mode:
 
 
 QUEUE = HoldQueue(MAX_NORMAL_WAIT_S, db_path=Path(os.environ.get("DUALUSE_QUEUE_DB", str(ROOT / ".tmp/211-queue.sqlite3"))), mode=default_mode())
-SURGE: dict = {}  # the running or last demo surge: its thread and progress counters
+SURGE: dict = {}  # the running or last demo surge: thread, stop event and progress status
+SURGE_LOCK = threading.Lock()
 
 
 @app.exception_handler(Conflict)
@@ -240,22 +242,23 @@ def change_profile(body: ProfileChange) -> dict:
 
 def surge_status() -> dict:
     running = bool(SURGE.get("thread") and SURGE["thread"].is_alive())
-    return {**{k: v for k, v in SURGE.items() if k != "thread"}, "running": running}
+    return {**SURGE.get("status", {}), "running": running}
 
 
 @app.post("/demo/surge")
 def demo_surge(body: SurgeRequest) -> dict:
     """Simulated arrivals into the live desk; each call carries its origin label."""
-    if surge_status()["running"]:
-        raise HTTPException(409, "A demo surge is already running")
-    try:
-        callers = plan_surge(body.count, body.source, body.seed)
-        offsets = arrival_offsets(len(callers), body.span_s, body.pattern, body.seed)
-    except FileNotFoundError as error:
-        raise HTTPException(409, f"Dataset missing: {error}") from error
-    SURGE.clear()
-    SURGE["thread"] = start_surge(QUEUE, callers, offsets, status=SURGE)
-    return surge_status()
+    with SURGE_LOCK:
+        if surge_status()["running"]:
+            raise HTTPException(409, "A demo surge is already running")
+        try:
+            callers = plan_surge(body.count, body.source, body.seed)
+            offsets = arrival_offsets(len(callers), body.span_s, body.pattern, body.seed)
+        except FileNotFoundError as error:
+            raise HTTPException(409, f"Dataset missing: {error}") from error
+        status, stop = {}, threading.Event()
+        SURGE.update(status=status, stop=stop, thread=start_surge(QUEUE, callers, offsets, status=status, stop=stop))
+        return surge_status()
 
 
 @app.get("/demo/surge")
@@ -267,7 +270,11 @@ def get_surge() -> dict:
 def reset(body: Reset) -> dict:
     mode = body.mode or default_mode()
     check_mode(mode)
-    QUEUE.reset(mode)
+    with SURGE_LOCK:
+        if SURGE.get("stop"):
+            SURGE["stop"].set()
+            SURGE["thread"].join(timeout=5)  # its callers stop before the desk is cleared
+        QUEUE.reset(mode)
     return state()
 
 

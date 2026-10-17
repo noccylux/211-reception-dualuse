@@ -33,7 +33,7 @@ def call_api(method, path, **kwargs):
     try:
         return api(method, path, **kwargs)
     except ApiError as error:
-        st.error(str(error))
+        st.error(literal(str(error)))  # error bodies can echo caller text
         st.stop()
 
 
@@ -52,8 +52,10 @@ def tier_line(call):
 
 
 def literal(text):
-    """Caller words are untrusted: escape Markdown, math ($) and emoji codes so they display as typed."""
-    return re.sub(r"([\\`*_{}\[\]()#+\-.!|<>~$:])", r"\\\1", text)
+    """Caller words are untrusted: escape Markdown, math ($) and entities, and break :emoji: codes
+    with a zero-width space (Streamlit replaces them even after escaping), so text shows as typed."""
+    escaped = re.sub(r"([\\`*_{}\[\]()#+\-.!|<>~$:&])", r"\\\1", text)
+    return escaped.replace("\\:", "\\:\u200b")
 
 
 st.title("211 Reception")
@@ -70,10 +72,13 @@ with st.sidebar:
     if not initial["model_available"]:
         st.info("Model credentials are unavailable. Select the labeled offline mode.")
     names = {p["key"]: p["name"] for p in initial["profiles"]}
-    profile = st.selectbox("Line profile (new calls)", list(names), index=list(names).index(initial["profile"]),
-                           format_func=names.get, key="line_profile")
+    if st.session_state.get("line_profile_seen") != initial["profile"]:
+        # Another tab switched the desk: show its choice instead of posting this tab's stale one.
+        st.session_state["line_profile"] = st.session_state["line_profile_seen"] = initial["profile"]
+    profile = st.selectbox("Line profile (new calls)", list(names), format_func=names.get, key="line_profile")
     if profile != initial["profile"]:
         call_api("POST", "/profile", json={"profile": profile})
+        st.session_state["line_profile_seen"] = profile
         st.rerun()
     st.caption("Use two browser tabs for caller and operator. One shared demo queue; no authentication.")
     with st.expander("Reset local demo"):
@@ -112,7 +117,8 @@ def caller_panel():
             st.markdown(literal(turn["text"]))
     if call["processing"]:
         st.caption("The assistant is processing your message. An operator can still take over.")
-    text = st.chat_input("Tell the assistant what is happening", disabled=call["status"] != "waiting" or call["processing"])
+    text = st.chat_input("Tell the assistant what is happening", max_chars=4000,
+                         disabled=call["status"] != "waiting" or call["processing"])
     if text:
         try:
             api("POST", f"/calls/{call_id}/say", json={"text": text})
@@ -120,7 +126,7 @@ def caller_panel():
             st.session_state["turn_error"] = str(error)
         st.rerun(scope="fragment")
     if "turn_error" in st.session_state:
-        st.error(st.session_state.pop("turn_error"))
+        st.error(literal(st.session_state.pop("turn_error")))
     with st.expander("Demo call events and sample prompts"):
         st.caption("These controls simulate connection events; there is no audio detector or phone call.")
         cols = st.columns(3)

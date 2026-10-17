@@ -97,3 +97,21 @@ def test_the_operator_desk_injects_a_labeled_surge(desk):
     api.SURGE["thread"].join(20)
     calls = queue.snapshot()["calls"]
     assert calls and all(c["origin"].startswith("simulated") for c in calls)
+
+
+def test_a_tab_does_not_undo_another_tabs_profile_switch(desk):
+    queue, _ = desk
+    app = run_app()
+    queue.profile = "cn-12345"
+    app.run()
+    assert queue.profile == "cn-12345"
+
+
+def test_emoji_codes_and_entities_in_caller_text_stay_literal(desk):
+    queue, _ = desk
+    call = queue.add()
+    queue.say(call.call_id, "Fire :fire: near &lt;b&gt; here")
+    app = run_app()
+    sources = [element.value for element in app.markdown]
+    assert not any(":fire:" in source for source in sources)
+    assert any(r"\&lt;" in source for source in sources)

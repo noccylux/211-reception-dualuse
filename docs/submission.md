@@ -31,8 +31,20 @@ Required by the rules. Add each tool when it is first used.
 
 Third-party code: `crisisfusion_map/` is the CrisisFusion map plugin 1.0.0,
 written by a classmate as a separate demo. We translated its UI strings to
-English and changed one test path; its logic is unchanged. Before submitting, name its author and list the AI tools they used.
-Leaflet 1.9.4 (BSD-2-Clause) ships inside it.
+English and changed one test path; we then generalized its LA County
+boundary into a host-chosen service area (boundary, view, geocoder, feeds),
+added an OpenStreetMap Nominatim geocoder for areas outside the US and an
+out-of-area marker. Leaflet 1.9.4 (BSD-2-Clause) ships inside it.
+
+`crisisfusion_scoring/` is the CrisisFusion scoring plugin 1.0.0 by the same
+classmate (deterministic English/Spanish rules, 0–100 Human Attention Index),
+vendored unchanged. It runs as a shadow second opinion beside our tier and
+never changes a tier or the queue order.
+
+Before submitting, name the author of both plugins and list the AI tools they used.
+
+Boundary data: Shanghai Municipality from OpenStreetMap contributors (ODbL),
+relation 913067 via Nominatim; LA County from LA County GIS.
 
 ## Pitch outline (5 minutes)
 

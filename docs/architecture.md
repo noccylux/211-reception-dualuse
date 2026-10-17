@@ -54,8 +54,9 @@ Retell voice bridge ([voice.md](voice.md)), labeled origin `phone`. Design and h
 | `dualuse/ui.py` | Caller conversation, operator desk, incident reports, scenario simulator, about page. Panels refresh every 2 s. |
 | `dualuse/triage.py`, `simulation.py`, `surge.py` | Queue policies and the offline three-policy simulation. |
 | `dualuse/voice_bridge.py` | Separate process connecting Retell phone calls to the desk through the REST API only; see [voice.md](voice.md). |
-| `dualuse/mapview.py` | Copies each queue call (caller words, stated location, tier as a display label) into the map plugin once a second, with a new revision only when content changes. In memory; rebuilt after a restart and replaced on reset. |
-| `crisisfusion_map/` | Vendored CrisisFusion map plugin 1.0.0, mounted at `/plugins/map/` and shown in the UI's "Incident map" workspace. LA County boundary, address candidates, Census geocoding on request, NWS alerts and USGS quakes on manual refresh. It never changes a tier. See its [README](../crisisfusion_map/README.md). |
+| `dualuse/mapview.py` | Copies the active line's calls (caller words, stated location or test-data coordinates, tier and scorer band as display labels) into the map plugin once a second, with a new revision only when content changes. In memory; rebuilt after a restart and replaced on reset or profile switch. |
+| `crisisfusion_map/` | Vendored CrisisFusion map plugin 1.0.0, mounted at `/plugins/map/` and shown in the UI's "Incident map" workspace. The service area comes from the line profile (`MapArea` in `profiles.py`): LA County with Census geocoding and NWS + USGS, or Shanghai (OSM boundary) with Nominatim geocoding and USGS. World-wide base map; calls located outside the area are dashed grey and flagged for transfer. Lookups and feeds run only on button press. It never changes a tier. See its [README](../crisisfusion_map/README.md). |
+| `dualuse/shadow.py`, `crisisfusion_scoring/` | Shadow second opinion: the vendored CrisisFusion scorer reads each call's caller-only transcript (English/Spanish; other languages shown as "human check") and the operator desk shows its score, band, open needs and a disagreement flag next to the tier. It never changes a tier or the queue order. |
 
 ## Conversation turn
 
@@ -131,6 +132,8 @@ unverified candidate association that never lowers anyone's priority.
 | Austin APD 911 Calls for Service, busiest day 2026-06-06 | recorded | Time-compressed surge arrival pattern; police dispatch, not 211 |
 | 211 LA January 2025 after-action report, Appendix D | recorded, daily aggregates | Crisis figures above; scenario simulator defaults |
 | Scenario simulator | simulated, assumed error rates | Offline policy comparison; it does not call Claude |
+| `POST /calls` with `origin: replay` and `location` | replayed test data, labeled synthetic | Calls with coordinates that land on the map directly |
+| LA County GIS boundary; OpenStreetMap Shanghai boundary (relation 913067, ODbL) | recorded, sha256 in `crisisfusion_map/data/geo_sources.json` | Service area per line profile; the OSM outline is not an official boundary |
 
 `docs/datasets.md` lives in the main checkout until this branch merges.
 

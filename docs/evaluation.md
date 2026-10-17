@@ -1,6 +1,8 @@
 # Evaluation on recorded disaster messages
 
-Results of one run, Sat 2026-10-17 PT. The question: given a caller's first message, how often
+Results for the desk as changed in [record 016](changes/2026-10-17-016-desk-tier-definitions-and-checks.md),
+Sat 2026-10-17 PT, next to the first run ([record 013](changes/2026-10-17-013-real-data-evaluation.md)).
+The question: given a caller's first message, how often
 does the desk rank someone who needs a person as routine, and how often does it put a routine
 message ahead of others? The messages are SMS sent after the 2010 Haiti earthquake and Pakistan
 floods and Hurricane Sandy message-board posts, scored against proxy labels. They are not 211
@@ -24,6 +26,10 @@ calls, so these numbers are not 211 accuracy.
   as sent (mostly Haitian Creole, some French; romanized Urdu for Pakistan; Sandy messages have no
   original). The README notes that the translations are not all literal: some summarize, add
   exposition or write out categories.
+* Validation split, used to check desk changes before the test split runs: the same filter and
+  labels give 1,047 distinct direct messages (342 needs a person, 705 routine, 83 in the subset).
+  One of them (id 14428, `related == 2`, "unsure") has a blank translation; like a Sandy message
+  without an original, it runs only on the text it has.
 
 ## Method
 
@@ -37,8 +43,13 @@ calls, so these numbers are not 211 accuracy.
   * Offline keyword rules: the desk's offline mode (`reception.receive` in `rules` mode, which
     calls `extract.classify_with_rules`).
   * Claude model mode: the desk's `reception.model_turn` with `claude-haiku-5-5` and the
-    playbooks, as in the live demo.
+    playbooks, as in the live demo. Its request allows 4,000 output tokens (1,600 in the first
+    run), because hidden thinking counts against the limit.
 * Both methods run on the English translation and on the original text.
+* Desk changes are judged on the validation split (`--split validation`, same sampling), and the
+  test split runs once afterwards. A validation run writes
+  `data/processed/eval_messages_validation.json`; only a test-split run writes the results block
+  below and `data/processed/eval_messages.json`, which the simulator reads.
 * Raw Claude responses are cached by request in `data/processed/eval_messages_cache.jsonl`, so a
   rerun with unchanged playbooks replays the same answers through the current code for free. The
   evaluation client allows 60 s and three retries per request (the live desk: 20 s, none); latency
@@ -60,12 +71,12 @@ calls, so these numbers are not 211 accuracy.
 ## Results
 
 <!-- results:start, written by scripts/evaluate_messages.py -->
-Generated Sat 2026-10-17 13:32 PT by `scripts/evaluate_messages.py`. Recorded 2010 Haiti and Pakistan SMS and Hurricane Sandy message-board posts (Munro test split, direct messages, CC BY 4.0, Robert Munro 2012) with proxy category labels, first message only; not 211 calls.
+Generated Sat 2026-10-17 14:28 PT by `scripts/evaluate_messages.py`. Recorded 2010 Haiti and Pakistan SMS and Hurricane Sandy message-board posts (Munro test split, direct messages, CC BY 4.0, Robert Munro 2012) with proxy category labels, first message only; not 211 calls.
 
 * Population: 1,067 distinct direct messages of the test split: 421 needs a person, 646 routine, 83 in the rescue, medical or death subset.
 * Sample (seed 7): 150 needs-a-person and 150 routine messages, plus every subset message; 355 messages evaluated (28 subset messages were already in the class sample). Events: haiti_earthquake 336, usa_sandy 14, pakistan_floods 5.
-* Original text exists for 340 of them; Sandy messages have none.
-* Claude: 691 distinct responses from claude-haiku-5-5 (0 sent in this run, the rest replayed from the cache); 161,885 uncached input, 1,953,457 cache-read, 0 cache-write and 566,252 output tokens; about $0.32 at list price.
+* English text exists for 355 and original text for 340 of them; Sandy messages have no original.
+* Claude: 691 distinct responses from claude-haiku-5-5 (688 sent in this run, the rest replayed from the cache); 161,885 uncached input, 2,033,291 cache-read, 23,816 cache-write and 571,715 output tokens; about $0.33 at list price.
 
 Rates with 95% Wilson intervals, as rate (count/n; interval):
 
@@ -75,8 +86,8 @@ Rates with 95% Wilson intervals, as rate (count/n; interval):
 | FIFO (reference) | Original text | 100% by construction | 0% by construction | 0% by construction | 100% by construction | n/a | n/a | n/a |
 | Offline keyword rules | English translation | 1.3% (2/150; 0.4-4.7%) | 1.3% (2/150; 0.4-4.7%) | 99.3% (149/150; 96.3-99.9%) | 1.2% (1/83; 0.2-6.5%) | 0.0% (0/150; 0.0-2.5%) | 0.0% (0/150; 0.0-2.5%) | 0 |
 | Offline keyword rules | Original text | 0.0% (0/149; 0.0-2.5%) | 0.0% (0/137; 0.0-2.7%) | 100.0% (137/137; 97.3-100.0%) | 0.0% (0/82; 0.0-4.5%) | 0.7% (1/149; 0.1-3.7%) | 0.0% (0/137; 0.0-2.7%) | 0 |
-| Claude model mode (claude-haiku-5-5) | English translation | 46.0% (69/150; 38.2-54.0%) | 1.3% (2/150; 0.4-4.7%) | 46.7% (70/150; 38.9-54.6%) | 34.9% (29/83; 25.6-45.7%) | 2.0% (3/150; 0.7-5.7%) | 2.0% (3/150; 0.7-5.7%) | 0 |
-| Claude model mode (claude-haiku-5-5) | Original text | 43.0% (64/149; 35.3-51.0%) | 4.4% (6/137; 2.0-9.2%) | 47.4% (65/137; 39.3-55.8%) | 32.9% (27/82; 23.7-43.7%) | 8.1% (12/149; 4.7-13.5%) | 5.8% (8/137; 3.0-11.1%) | 4 |
+| Claude model mode (claude-haiku-5-5) | English translation | 28.7% (43/150; 22.0-36.4%) | 3.3% (5/150; 1.4-7.6%) | 43.3% (65/150; 35.7-51.3%) | 24.1% (20/83; 16.2-34.3%) | 0.7% (1/150; 0.1-3.7%) | 1.3% (2/150; 0.4-4.7%) | 0 |
+| Claude model mode (claude-haiku-5-5) | Original text | 27.5% (41/149; 21.0-35.2%) | 4.4% (6/137; 2.0-9.2%) | 52.6% (72/137; 44.2-60.7%) | 22.0% (18/82; 14.4-32.1%) | 7.4% (11/149; 4.2-12.7%) | 5.1% (7/137; 2.5-10.2%) | 0 |
 
 Tiers the desk stored after the first message:
 
@@ -88,22 +99,72 @@ Tiers the desk stored after the first message:
 | Offline keyword rules | Original text | needs a person (sample) | 149 | 0 | 1 | 148 | 0 |
 | Offline keyword rules | Original text | routine (sample) | 137 | 0 | 0 | 137 | 0 |
 | Offline keyword rules | Original text | rescue, medical or death (all) | 82 | 0 | 0 | 82 | 0 |
-| Claude model mode (claude-haiku-5-5) | English translation | needs a person (sample) | 150 | 9 | 54 | 18 | 69 |
-| Claude model mode (claude-haiku-5-5) | English translation | routine (sample) | 150 | 0 | 2 | 68 | 80 |
-| Claude model mode (claude-haiku-5-5) | English translation | rescue, medical or death (all) | 83 | 14 | 31 | 9 | 29 |
-| Claude model mode (claude-haiku-5-5) | Original text | needs a person (sample) | 149 | 12 | 44 | 29 | 64 |
-| Claude model mode (claude-haiku-5-5) | Original text | routine (sample) | 137 | 3 | 3 | 59 | 72 |
-| Claude model mode (claude-haiku-5-5) | Original text | rescue, medical or death (all) | 82 | 15 | 26 | 14 | 27 |
+| Claude model mode (claude-haiku-5-5) | English translation | needs a person (sample) | 150 | 8 | 77 | 22 | 43 |
+| Claude model mode (claude-haiku-5-5) | English translation | routine (sample) | 150 | 0 | 5 | 60 | 85 |
+| Claude model mode (claude-haiku-5-5) | English translation | rescue, medical or death (all) | 83 | 11 | 42 | 10 | 20 |
+| Claude model mode (claude-haiku-5-5) | Original text | needs a person (sample) | 149 | 10 | 73 | 25 | 41 |
+| Claude model mode (claude-haiku-5-5) | Original text | routine (sample) | 137 | 0 | 6 | 66 | 65 |
+| Claude model mode (claude-haiku-5-5) | Original text | rescue, medical or death (all) | 82 | 15 | 37 | 12 | 18 |
 
 Review notes in model mode (messages with at least one note of each kind, all evaluated messages):
 
 | Text | Unverified quotes dropped | Location not in the caller's words | Life threat reported without a verified caller quote | Reply withheld because it made a promise | Interview failed |
 |---|---:|---:|---:|---:|---:|
-| English translation | 4 | 3 | 1 | 0 | 0 |
-| Original text | 15 | 10 | 0 | 0 | 4 |
+| English translation | 2 | 3 | 0 | 0 | 0 |
+| Original text | 12 | 11 | 1 | 0 | 0 |
 
-Language codes Claude reported for the original text: `ht` 288, `fr` 34, `en` 10, `(failed turn)` 4, `es` 1, `ur` 1, `ur-Latn` 1, `hi-Latn` 1.
+Language codes Claude reported for the original text: `ht` 292, `fr` 35, `en` 8, `es` 2, `ur` 2, `hi-Latn` 1.
 <!-- results:end -->
+
+## Before and after the desk fixes
+
+The first run ([record 013](changes/2026-10-17-013-real-data-evaluation.md)) found three desk
+weaknesses, which [record 016](changes/2026-10-17-016-desk-tier-definitions-and-checks.md) changed:
+
+* Definitions. `needs_person_soon` named no shelter tonight, medication or oxygen, a missing person
+  and a dependent left alone, and "where to find water or a shelter" was a routine question, so
+  requests for food, water or supplies after a disaster read as routine. It now also covers the
+  caller or people with them lacking food or drinking water today or care for an injured or sick
+  person; a question about where or how to get help, without saying they lack it now, stays
+  routine ([core.md](../dualuse/playbooks/core.md) and the schema description in
+  `dualuse/extract.py`).
+* Failed turns. Answers stopped at the 1,600-token limit, most of it hidden thinking; the desk
+  now allows 4,000.
+* Dropped quotes. Claude restores accents (`Léogâne` for `leogane`); the quote and location checks
+  now ignore accents on Latin letters. Respellings (`manje` for `MANGE`) still fail.
+
+"Before" is the desk of record 013 (playbook prompt SHA-256 `3b5a1cd383f3...`), "after" this desk
+(`b6eceae00cf6...`). One run each on the same sample (seed 7): validation Sat 2026-10-17 14:03 and
+14:12 PT, test 13:32 PT (record 013) and 14:28 PT. Recorded messages, proxy labels, first message
+only; not 211 accuracy.
+
+English translation:
+
+| Claude model mode | Validation, before | Validation, after | Test, before | Test, after |
+|---|---|---|---|---|
+| Miss: needs a person ranked NORMAL | 47.3% (71/150) | 25.3% (38/150) | 46.0% (69/150) | 28.7% (43/150) |
+| False alarm: routine ranked IMMEDIATE or PRIORITY | 3.3% (5/150) | 5.3% (8/150) | 1.3% (2/150) | 3.3% (5/150) |
+| Routine ranked ahead of NORMAL, UNKNOWN included | 44.7% (67/150) | 46.7% (70/150) | 46.7% (70/150) | 43.3% (65/150) |
+| Rescue, medical or death ranked NORMAL | 36.1% (30/83) | 19.3% (16/83) | 34.9% (29/83) | 24.1% (20/83) |
+| Rescue, medical or death ranked IMMEDIATE | 16 of 83 | 13 of 83 | 14 of 83 | 11 of 83 |
+| Review flag, needs a person | 1.3% (2/150) | 2.7% (4/150) | 2.0% (3/150) | 0.7% (1/150) |
+| Review flag, routine | 2.0% (3/150) | 2.0% (3/150) | 2.0% (3/150) | 1.3% (2/150) |
+| Failed turns | 1 | 0 | 0 | 0 |
+
+Original text:
+
+| Claude model mode | Validation, before | Validation, after | Test, before | Test, after |
+|---|---|---|---|---|
+| Miss: needs a person ranked NORMAL | 45.9% (67/146) | 26.7% (39/146) | 43.0% (64/149) | 27.5% (41/149) |
+| False alarm: routine ranked IMMEDIATE or PRIORITY | 6.4% (9/141) | 7.8% (11/141) | 4.4% (6/137) | 4.4% (6/137) |
+| Routine ranked ahead of NORMAL, UNKNOWN included | 53.2% (75/141) | 51.8% (73/141) | 47.4% (65/137) | 52.6% (72/137) |
+| Rescue, medical or death ranked NORMAL | 30.9% (25/81) | 18.5% (15/81) | 32.9% (27/82) | 22.0% (18/82) |
+| Rescue, medical or death ranked IMMEDIATE | 12 of 81 | 16 of 81 | 15 of 82 | 15 of 82 |
+| Review flag, needs a person | 14.4% (21/146) | 13.0% (19/146) | 8.1% (12/149) | 7.4% (11/149) |
+| Review flag, routine | 4.3% (6/141) | 4.3% (6/141) | 5.8% (8/137) | 5.1% (7/137) |
+| Failed turns | 4 | 0 | 4 | 0 |
+
+The keyword rows did not change: the offline rules were not touched.
 
 ## Reading the results
 
@@ -111,31 +172,37 @@ Language codes Claude reported for the original text: `ht` 288, `fr` 34, `en` 10
   needs-a-person and 147 of 150 routine English messages UNKNOWN, and nearly every original.
   Their misses are rare only because almost everyone shares PRIORITY's rank, which in the queue
   is close to FIFO. Their routine keywords (FEMA, CalFresh, freeway) are Los Angeles words.
-* Claude separates the classes in the right direction, but weakly on a first message: 63 of 150
-  needs-a-person messages are IMMEDIATE or PRIORITY against 2 of 150 routine ones, yet 69 of 150
-  (46%) are NORMAL, and 68 of 150 routine messages are UNKNOWN.
-* In the rescue, medical or death subset Claude ranks 14 of 83 IMMEDIATE (people under rubble,
-  "children and olders are dying from starvation") and 29 NORMAL. One read-through of those 29
-  (this session, not a label): about 25 ask for information, supplies or services, or report
-  deaths, without describing someone in danger now (one offers to donate a turkey); about four
-  state urgency in general terms, such as "Leogane has totally collapsed. We need help urgently."
-  The tier definitions in `dualuse/playbooks/core.md` name no shelter tonight, medication or
-  oxygen running out, a missing person and a dependent left alone as needing a person soon, and
-  list "where to find water or a shelter" as a routine question. Requests for food, water or
-  supplies after a disaster therefore read as routine. That definition gap, more than misreading,
-  drives the miss rate under this proxy.
-* Claude's rates on the original text are close to those on the English translation (misses
-  43% against 46%, subset ranked NORMAL 33% against 35%); it reported Haitian Creole (`ht`) for
-  288 of 340 originals. The first-turn ranking did not depend on the translation.
-* Review flags rise on the original text (8% and 6% against 2% and 2%), mostly dropped quotes
-  and locations. Claude hands back Creole quotes and place names with corrected spelling or
-  accents (`manje` for `MANGE`, `Léogâne` for `leogane`), and the checks require the caller's own
-  words. Four original-text turns failed because the answer reached `model_turn`'s 1,600-token
-  limit, with most tokens spent on hidden thinking; the live desk would rank those callers
-  UNKNOWN and flag them.
-* None of this is 211 accuracy. It says that, on recorded disaster messages, a single first turn
-  ranks about one in six danger-proxy messages IMMEDIATE and leaves about a third NORMAL, far from
-  the 5% miss rate the simulator assumed.
+* Claude now ranks 85 of 150 needs-a-person messages IMMEDIATE or PRIORITY (63 in the first run)
+  against 5 of 150 routine ones (2), and 43 of 150 (28.7%) NORMAL (69, 46.0%). The validation
+  split moved the same way (misses 47.3% to 25.3%), and its new definitions were written before
+  any validation message was read. Requests for food, water, tents or care now read as lacking a
+  basic need.
+* What stays NORMAL, from a read-through of the 38 validation misses (this session, not a label):
+  about a third state a current need that the new definition covers and Claude still ranked
+  routine ("now I'm hungry. Please send me something to eat", "we need foods and tents", "WE NEED
+  A DOCTOR IN ARCAHAIE"); the rest ask for information (passports, travel, which number to call,
+  where to find a tent), jobs, documents or electricity, complain about aid, or offer help.
+* The new false alarms on validation read as requests that the labels mark routine ("We need
+  food, water, money, energy, please around Santo", police officers without a tent, a sick
+  caller without money for the hospital).
+* In the rescue, medical or death subset, NORMAL fell from 29 to 20 of 83 (English) and IMMEDIATE
+  from 14 to 11; on the original text IMMEDIATE stayed at 15. Wording an injured or sick person
+  without care as PRIORITY may pull some medical reports down from IMMEDIATE; with one run per
+  desk this is not separable from run-to-run variation (validation: 16 to 13 English, 12 to 16
+  original).
+* Failed turns went from 4 to 0 on the test originals and from 5 to 0 on validation with the
+  4,000-token limit. Original-text messages with a dropped quote fell from 15 to 12 on the test
+  split. Replaying 537 baseline validation answers (old playbook, so the same answers) through the
+  new check isolates the accent rule: original-text messages with a dropped quote 15 to 12,
+  dropped locations unchanged at 7, English unchanged, no tier changed. The remaining drops are
+  mostly respellings or translations, which the check still refuses.
+* Ordinary day: in team-written samples (record 016), where-to questions for drinking water, a
+  food bank, a shelter, CalFresh and rent help stayed NORMAL in English, Spanish and Mandarin,
+  while callers without food or water since a fire or an earthquake became PRIORITY in all three
+  languages. These are simulated callers, not a measurement.
+* None of this is 211 accuracy. On recorded disaster messages a single first turn now leaves
+  about a quarter of danger-proxy messages NORMAL, still far from the 5% miss rate the simulator
+  assumed.
 
 ## Use in the scenario simulator
 
@@ -171,14 +238,26 @@ immediate callers who hung up beside P95 waits, because a wait only counts calle
 * The keyword rules read English only. Their original-text rows show that limit; they are not
   a tuning target.
 * Claude's answers can vary between runs. The cache fixes one set of answers; a run without it
-  draws new ones.
+  draws new ones. Each before or after figure above is one run.
+* Desk changes. The fixes of record 016 were written from the first run's test-split errors,
+  which two sessions read message by message, and were checked on the validation split before
+  the test split ran again. The new definitions were written before any validation message was
+  read, so the validation rows are the cleaner before-and-after comparison; the test rows are not
+  a fully independent check.
+* Replays. While the validation baseline ran, an overlapping run in another session sent 154 of
+  the same requests. The cache keeps both answers and replays the later one, so a replay of that
+  baseline differs from it on those turns; the reported baseline is the run's own output.
 
 ## Reproduce
 
 ```text
 bash scripts/uv-run.sh env -u ANTHROPIC_API_KEY python scripts/evaluate_messages.py
+bash scripts/uv-run.sh env -u ANTHROPIC_API_KEY python scripts/evaluate_messages.py --split validation
 ```
 
 `env -u` lets `dualuse.config` read the key from `.env` when WSLENV forwards an empty variable.
-The run writes `data/processed/eval_messages.json` (summaries and one row per message, method and
-text) and the results block above.
+The test run writes `data/processed/eval_messages.json` (summaries and one row per message, method
+and text) and the results block above; the validation run writes only its own file. From a
+worktree, add `PYTHONPATH=.` after `env` so the worktree's `dualuse` is imported. Run one
+evaluation at a time: worktrees link `data/` to the main checkout, so every run appends to the
+same cache file.

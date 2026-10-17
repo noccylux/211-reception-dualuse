@@ -72,6 +72,52 @@ def test_load_messages_rejects_a_request_label_outside_zero_and_one(tmp_path):
         evaluate_messages.load_messages(path, digest)
 
 
+def test_load_messages_reads_only_the_requested_split(tmp_path):
+    path = tmp_path / "validation.csv"
+    digest = write_csv(path, [{"id": 1, "split": "validation", "message": "We need water", "request": 1},
+                              {"id": 2, "message": "Weather news", "request": 0}])
+    assert [r["id"] for r in evaluate_messages.load_messages(path, digest, "validation")] == ["1"]
+
+
+def test_a_message_without_english_text_is_kept_for_its_original(tmp_path):
+    path = tmp_path / "validation.csv"
+    digest = write_csv(path, [{"id": 14428, "split": "validation", "message": "   ", "original": "Shikarpur a", "request": 0}])
+    assert [(r["message"], r["original"]) for r in evaluate_messages.load_messages(path, digest, "validation")] == [("", "Shikarpur a")]
+
+
+def test_a_validation_run_leaves_the_test_results_and_the_docs_block_alone(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "validation.csv"
+    digest = write_csv(path, [
+        {"id": 1, "split": "validation", "message": "We need water", "original": "Nou bezwen dlo", "request": 1},
+        {"id": 2, "split": "validation", "message": "Weather news", "original": "Nouvel tan an", "request": 0},
+        {"id": 3, "split": "validation", "message": " ", "original": "Shikarpur a", "request": 0},
+        {"id": 4, "split": "validation", "message": "Food please", "original": "Manje souple", "request": 1},
+    ])
+    doc = tmp_path / "evaluation.md"
+    doc.write_text(f"{evaluate_messages.START}\ntest-split results\n{evaluate_messages.END}\n", encoding="utf-8")
+    before = doc.read_text(encoding="utf-8")
+    real_client = evaluate_messages.CachedClient
+    monkeypatch.setattr(evaluate_messages, "ROOT", tmp_path)
+    monkeypatch.setattr(evaluate_messages, "SPLITS", {"test": tmp_path / "test.csv", "validation": path})
+    monkeypatch.setattr(evaluate_messages, "manifest_sha256", lambda p: digest if p == path else pytest.fail(f"read {p}"))
+    monkeypatch.setattr(evaluate_messages, "DOC", doc)
+    monkeypatch.setattr(evaluate_messages, "CachedClient",
+                        lambda cache: real_client(tmp_path / "cache.jsonl", lambda: Upstream(message(interview()))))
+
+    evaluate_messages.main(["--split", "validation", "--per-class", "2", "--workers", "1"])
+
+    saved = json.loads(evaluate_messages.evaluation.RESULTS.with_name("eval_messages_validation.json").read_text(encoding="utf-8"))
+    assert saved["source"]["split"] == "validation" and "validation split" in saved["label"]
+    model = [r for r in saved["rows"] if r["method"] == "model"]
+    assert {r["tier"] for r in model} == {"immediate"}
+    assert sorted((r["text"], r["id"]) for r in model) == [("english", "1"), ("english", "2"), ("english", "4"), ("original", "1"),
+                                                           ("original", "2"), ("original", "3"), ("original", "4")]
+    assert not evaluate_messages.evaluation.RESULTS.exists()  # the simulator's test-split results
+    assert doc.read_text(encoding="utf-8") == before
+    printed = capsys.readouterr().out
+    assert "of the validation split" in printed and "English text exists for 3 and original text for 4" in printed
+
+
 def rows_for_sampling():
     rows = []
     for i in range(40):
@@ -201,9 +247,9 @@ def test_the_results_block_reports_every_method_text_and_label():
     summaries = {m: {t: evaluate_messages.evaluation.summarize(rows) for t in ("english", "original")} for m in ("rules", "model")}
     summaries["fifo"] = {t: evaluate_messages.evaluation.fifo_summary(rows) for t in ("english", "original")}
     results = {
-        "label": evaluate_messages.LABEL, "generated_at": "Sat 2026-10-17 13:30 PT", "summaries": summaries,
-        "source": {"messages": 1069, "needs": 422, "routine": 647, "subset": 83},
-        "sample": {"seed": 7, "per_class": 150, "evaluated": 357, "subset_in_sample": 26, "with_original": 341,
+        "label": evaluate_messages.LABEL.format(split="test"), "generated_at": "Sat 2026-10-17 13:30 PT", "summaries": summaries,
+        "source": {"split": "test", "messages": 1069, "needs": 422, "routine": 647, "subset": 83},
+        "sample": {"seed": 7, "per_class": 150, "evaluated": 357, "subset_in_sample": 26, "with_english": 357, "with_original": 341,
                    "events": {"haiti_earthquake": 330}},
         "desk": {"models_seen": ["claude-haiku-5-5"]},
         "usage": {"responses": 2, "sent_this_run": 0, "input_tokens": 1, "output_tokens": 2,
@@ -212,7 +258,7 @@ def test_the_results_block_reports_every_method_text_and_label():
         "languages": {"original": {"ht": 1}},
     }
     block = evaluate_messages.markdown(results)
-    assert "not 211 calls" in block
+    assert "not 211 calls" in block and "Munro test split" in block and "of the test split" in block
     assert "| FIFO (reference) | English translation | 100% by construction | 0% by construction |" in block
     assert "| Claude model mode (claude-haiku-5-5) | Original text | 100.0% (1/1; " in block
     assert "`ht` 1" in block

@@ -28,8 +28,10 @@ class Extraction(BaseModel):
         "a medical emergency, violence in progress."
     )
     needs_person_soon: bool = Field(
-        description="Urgent but not life-threatening: no shelter tonight, medication or oxygen running out, "
-        "a missing person, a minor or a dependent adult without care."
+        description="Urgent but not life-threatening: the caller or people with them lack a basic need now or by "
+        "tonight (no shelter tonight, no food or drinking water today, medication or oxygen running out, an injured "
+        "or sick person without care), a missing person, or a minor or a dependent adult without care. Not a "
+        "question about where or how to get help from someone who does not say they lack it now."
     )
     enough_information: bool = Field(description="The caller said enough to judge the two risk fields above.")
     evidence: list[str] = Field(description="The caller's own words that support the risk judgment, verbatim.")

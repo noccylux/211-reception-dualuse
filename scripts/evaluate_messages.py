@@ -1,9 +1,9 @@
 """Evaluate the 211 desk's first-turn tiers on recorded disaster messages with proxy labels.
 
-Data: Munro disaster response messages, test split only, direct messages; CC BY 4.0, Robert Munro
-(2012), Processing short message communications in low-resource languages, Stanford University.
-These are SMS sent after the 2010 Haiti earthquake and Pakistan floods, and Hurricane Sandy
-message-board posts; not 211 calls.
+Data: Munro disaster response messages, direct messages of one split (test by default); CC BY 4.0,
+Robert Munro (2012), Processing short message communications in low-resource languages, Stanford
+University. These are SMS sent after the 2010 Haiti earthquake and Pakistan floods, and Hurricane
+Sandy message-board posts; not 211 calls.
 Proxy labels: request = 1 means the message needs a person, request = 0 is routine; messages that
 also carry search_and_rescue, medical_help or death form a subset reported separately.
 
@@ -11,10 +11,12 @@ Each chosen message joins a fresh in-memory desk and speaks once, in the offline
 model mode (the app's reception.model_turn), on the English translation and on the original text.
 Claude's raw responses are cached by request, so a rerun with unchanged playbooks costs nothing.
 
-    bash scripts/uv-run.sh env -u ANTHROPIC_API_KEY python scripts/evaluate_messages.py
+    bash scripts/uv-run.sh env -u ANTHROPIC_API_KEY python scripts/evaluate_messages.py [--split validation]
 
 `env -u` lets dualuse.config load the key from .env when WSLENV forwards an empty variable.
-Writes data/processed/eval_messages.json and the results block of docs/evaluation.md.
+The test split writes data/processed/eval_messages.json, which the simulator reads, and the results
+block of docs/evaluation.md. Iterate on the validation split: it writes
+data/processed/eval_messages_validation.json and leaves both alone.
 """
 
 import argparse
@@ -40,13 +42,14 @@ from dualuse.holdqueue import HoldQueue
 from dualuse.live_surge import MESSAGES
 
 MANIFEST = ROOT / "docs/datasets.manifest.json"
+SPLITS = {"test": MESSAGES, "validation": MESSAGES.with_name("disaster_response_validation.csv")}
 CACHE = ROOT / "data/processed/eval_messages_cache.jsonl"
 DOC = ROOT / "docs/evaluation.md"
 START = "<!-- results:start, written by scripts/evaluate_messages.py -->"
 END = "<!-- results:end -->"
 COLUMNS = {"english": "message", "original": "original"}
 MAX_NORMAL_WAIT_S = 1800  # the desk's aging guard; irrelevant for a single first turn
-LABEL = ("Recorded 2010 Haiti and Pakistan SMS and Hurricane Sandy message-board posts (Munro test split, direct "
+LABEL = ("Recorded 2010 Haiti and Pakistan SMS and Hurricane Sandy message-board posts (Munro {split} split, direct "
          "messages, CC BY 4.0, Robert Munro 2012) with proxy category labels, first message only; not 211 calls")
 # USD per million tokens for claude-haiku-5-5 (prompts up to 100K); cache writes ~1.25x and reads ~0.1x input.
 PRICE = {"input_tokens": 0.10, "output_tokens": 0.50, "cache_creation_input_tokens": 0.125, "cache_read_input_tokens": 0.01}
@@ -67,9 +70,9 @@ def _flag(raw: dict, name: str) -> bool:
     return raw[name] == "1"
 
 
-def load_messages(path: Path, sha256: str) -> list[dict]:
-    """Distinct direct messages of the test split with their proxy labels; the file must match the
-    manifest. A row repeated verbatim (two Sandy posts in this revision) counts once."""
+def load_messages(path: Path, sha256: str, split: str = "test") -> list[dict]:
+    """Distinct direct messages of one split with their proxy labels; the file must match the
+    manifest. A row repeated verbatim (two Sandy posts in the test split) counts once."""
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     if digest != sha256:
         raise ValueError(f"{path} has SHA-256 {digest}, the manifest says {sha256}; see docs/datasets.md")
@@ -77,15 +80,15 @@ def load_messages(path: Path, sha256: str) -> list[dict]:
     rows = []
     with path.open(encoding="utf-8", newline="") as file:
         for raw in csv.DictReader(file):
-            if raw["split"] != "test" or raw["genre"] != "direct":
+            if raw["split"] != split or raw["genre"] != "direct":
                 continue
             if raw["id"] in seen:
                 if seen[raw["id"]] != raw:
                     raise ValueError(f"message id {raw['id']} appears twice with different content")
                 continue
             seen[raw["id"]] = raw
-            if not raw["message"].strip():
-                raise ValueError(f"message {raw['id']} has no English text")
+            # A blank translation (one validation message) is treated like a missing original: that
+            # text column skips the message, and the results count each column.
             request = _flag(raw, "request")
             danger = any(_flag(raw, name) for name in ("search_and_rescue", "medical_help", "death"))
             rows.append({"id": raw["id"], "event": raw["event"], "message": raw["message"].strip(),
@@ -235,13 +238,14 @@ def markdown(results: dict) -> str:
     lines = [
         f"Generated {results['generated_at']} by `scripts/evaluate_messages.py`. {results['label']}.",
         "",
-        f"* Population: {s['messages']:,} distinct direct messages of the test split: {s['needs']} needs a person, "
+        f"* Population: {s['messages']:,} distinct direct messages of the {s['split']} split: {s['needs']} needs a person, "
         f"{s['routine']} routine, {s['subset']} in the rescue, medical or death subset.",
         f"* Sample (seed {sample['seed']}): {sample['per_class']} needs-a-person and {sample['per_class']} routine "
         f"messages, plus every subset message; {sample['evaluated']} messages evaluated "
         f"({sample['subset_in_sample']} subset messages were already in the class sample). Events: "
         + ", ".join(f"{name} {count}" for name, count in sample["events"].items()) + ".",
-        f"* Original text exists for {sample['with_original']} of them; Sandy messages have none.",
+        f"* English text exists for {sample['with_english']} and original text for {sample['with_original']} of them; "
+        "Sandy messages have no original.",
         f"* Claude: {usage['responses']} distinct responses from {', '.join(results['desk']['models_seen'])} "
         f"({usage['sent_this_run']} sent in this run, the rest replayed from the cache); "
         f"{usage['input_tokens']:,} uncached input, {usage['cache_read_input_tokens']:,} cache-read, "
@@ -289,9 +293,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--per-class", type=int, default=150, help="messages sampled from each class")
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--workers", type=int, default=4, help="concurrent Claude requests")
+    parser.add_argument("--split", choices=sorted(SPLITS), default="test",
+                        help="test feeds docs/evaluation.md and the simulator; iterate on validation")
     args = parser.parse_args(argv)
 
-    rows = load_messages(MESSAGES, manifest_sha256(MESSAGES))
+    source = SPLITS[args.split]
+    rows = load_messages(source, manifest_sha256(source), args.split)
     chosen = choose(rows, args.per_class, args.seed)
     jobs = [(row, text) for row in chosen for text in evaluation.TEXTS if row[COLUMNS[text]]]
     print(f"{len(rows)} direct messages; {len(chosen)} chosen; {len(jobs)} turns per method", flush=True)
@@ -313,16 +320,17 @@ def main(argv: list[str] | None = None) -> None:
     usage = client.usage()
     cost = sum(usage[name] * price for name, price in PRICE.items()) / 1e6
     results = {
-        "label": LABEL,
+        "label": LABEL.format(split=args.split),
         "generated_at": datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%a %Y-%m-%d %H:%M PT"),
-        "source": {"file": MESSAGES.relative_to(ROOT).as_posix(), "sha256": manifest_sha256(MESSAGES),
-                   "split": "test", "genre": "direct", "license": "CC BY 4.0",
+        "source": {"file": source.relative_to(ROOT).as_posix(), "sha256": manifest_sha256(source),
+                   "split": args.split, "genre": "direct", "license": "CC BY 4.0",
                    "citation": "Robert Munro (2012), Processing short message communications in low-resource "
                                "languages, Stanford University",
                    "messages": len(rows), "needs": sum(r["label"] == "needs" for r in rows),
                    "routine": sum(r["label"] == "routine" for r in rows), "subset": sum(r["subset"] for r in rows)},
         "sample": {"seed": args.seed, "per_class": args.per_class, "evaluated": len(chosen),
                    "subset_in_sample": sum(r["subset"] and r["sampled"] for r in chosen),
+                   "with_english": sum(bool(r["message"]) for r in chosen),
                    "with_original": sum(bool(r["original"]) for r in chosen),
                    "events": dict(Counter(r["event"] for r in chosen).most_common())},
         "desk": {"model": EXTRACTION_MODEL, "models_seen": client.models(), "profile": "la-211",
@@ -344,12 +352,15 @@ def main(argv: list[str] | None = None) -> None:
         "usage": {**usage, "sent_this_run": client.sent, "replayed": client.reused, "cost_usd": round(cost, 4)},
         "rows": records,
     }
-    evaluation.RESULTS.parent.mkdir(parents=True, exist_ok=True)
-    evaluation.RESULTS.write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
+    # Only the test split may reach the simulator and the docs; validation runs are for iterating.
+    out = evaluation.RESULTS if args.split == "test" else evaluation.RESULTS.with_name(f"eval_messages_{args.split}.json")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
     block = markdown(results)
-    replace_block(DOC, block)
+    if args.split == "test":
+        replace_block(DOC, block)
     print(block)
-    print(f"\nWrote {evaluation.RESULTS.relative_to(ROOT)} and the results block of {DOC.relative_to(ROOT)}")
+    print(f"\nWrote {out}" + (f" and the results block of {DOC}" if args.split == "test" else ""))
 
 
 if __name__ == "__main__":

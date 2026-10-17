@@ -66,7 +66,9 @@ Retell voice bridge ([voice.md](voice.md)), labeled origin `phone`. Design and h
    assistant (everything said to the caller) turns, and the facts as a final
    system message.
 3. Quotes and the location are checked against the caller's words after
-   normalizing case, quotes and whitespace. Unverified quotes or locations are
+   normalizing case, quotes, whitespace and accents on Latin letters (callers
+   often type `leogane` where Claude writes `Léogâne`); a respelled word still
+   fails. Unverified quotes or locations are
    dropped and flagged for review; a life threat without a verified quote stays
    IMMEDIATE with a flag. An empty or oversized reply becomes a fixed question
    in the caller's language.
@@ -115,6 +117,12 @@ tier, profile, language, reservations, handoffs and audit events.
 | Unknown: not enough information yet | 1 |
 | Normal: routine request | 2 |
 
+Claude fills the fields that decide the tier; [core.md](../dualuse/playbooks/core.md)
+and the schema descriptions in `dualuse/extract.py` define them. Needing a
+person soon includes the caller or people with them lacking shelter tonight,
+food or drinking water today, medication or oxygen, or care for an injured or
+sick person; a question about where or how to get help is routine.
+
 FIFO applies within a rank. A normal caller waiting 30 minutes is scheduled at
 rank 1 without changing the stored tier; this is not a maximum wait guarantee.
 Reports are grouped by incident kind and normalized stated location, as an
@@ -128,6 +136,7 @@ unverified candidate association that never lowers anyone's priority.
 | `dualuse/surge_scripts.py` | simulated, team-written | Surge callers in English, Spanish and Mandarin |
 | Munro disaster response messages, test split, English translation ([datasets](datasets.md)) | recorded, CC BY 4.0 | First messages of surge callers, labeled per call; not 211 calls |
 | Munro test split, direct messages, English translation and original text, with the dataset's categories as proxy labels | recorded, CC BY 4.0 | First-turn evaluation of the offline and Claude tiers ([evaluation.md](evaluation.md)); not 211 calls, so not 211 accuracy |
+| Munro validation split, same filter and labels | recorded, CC BY 4.0 | Checking desk changes before the test split runs (`--split validation`) |
 | Austin APD 911 Calls for Service, busiest day 2026-06-06 | recorded | Time-compressed surge arrival pattern; police dispatch, not 211 |
 | 211 LA January 2025 after-action report, Appendix D | recorded, daily aggregates | Crisis figures above; scenario simulator defaults |
 | Scenario simulator | simulated calls; assumed error rates, plus tier shares measured in the evaluation when `data/processed/eval_messages.json` exists | Offline policy comparison; it does not call Claude |
@@ -136,13 +145,14 @@ unverified candidate association that never lowers anyone's priority.
 
 ## Failure behavior and limits
 
-- Model mode: 20 s timeout, no retries. A failed turn keeps the message, shows
+- Model mode: 20 s timeout, no retries, up to 4,000 output tokens because
+  hidden thinking counts against the limit. A failed turn keeps the message, shows
   an error, flags the call and makes a non-immediate call UNKNOWN.
 - Each message is at most 4,000 characters, 32,000 per conversation. Caller
   text is escaped before display. No authentication: run on localhost only.
 - Tier accuracy is measured only on recorded disaster messages with proxy labels, first
   message only ([evaluation.md](evaluation.md)), not on 211 calls or whole
   conversations. Not measured: latency under load, Mandarin
-  and Spanish quality beyond the smoke checks in record 009.
+  and Spanish quality beyond the smoke checks in records 009 and 016.
 
 Startup and the demo path: [README](../README.md).

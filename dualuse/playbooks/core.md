@@ -41,12 +41,16 @@ danger and what help they need, so the operator can act quickly.
   caller in this field; null when they have not said. Never invent or complete
   an address.
 - `life_threat_now`: someone is in physical danger right now.
-  `needs_person_soon`: urgent but not life-threatening (no shelter tonight,
-  medication or oxygen running out, a missing person, a dependent left alone).
+  `needs_person_soon`: urgent but not life-threatening. The caller or people
+  with them lack a basic need now or by tonight: no shelter tonight, no food
+  or drinking water today (as after a disaster), medication or oxygen running
+  out, or an injured or sick person without care. Also a missing person or a
+  dependent left alone. A question about where or how to get help, from
+  someone who does not say they lack it now, is routine.
   `enough_information`: true once you can tell what the caller needs or is
   reporting, even if details such as the address are still missing; a clear
-  routine question (road status, benefits, where to find water or a shelter)
-  is enough. False only when you cannot yet tell what they need.
+  routine question (road status, benefits, where to find food, water or a
+  shelter) is enough. False only when you cannot yet tell what they need.
 - `incident_kind` only for an actual report, not a question about services;
   `report_only` when the caller reports something they see without asking for
   help for themselves.

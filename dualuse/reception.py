@@ -2,6 +2,7 @@
 
 import functools
 import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -14,6 +15,9 @@ from dualuse.profiles import fallback_question
 
 PLAYBOOKS = Path(__file__).parent / "playbooks"
 MAX_REPLY = 1200
+# Hidden thinking counts against max_tokens: on recorded Creole messages 1,600 cut off some answers.
+# The 20 s client timeout, not this limit, bounds how long a caller waits for a turn.
+MAX_TOKENS = 4000
 Topic = Literal["situation", "location", "safety", "need", "detail", "wait"]
 
 
@@ -76,7 +80,7 @@ def _messages(dialogue: list[dict], facts: str) -> list[dict]:
 def model_turn(dialogue: list[dict], facts: str = "", client=None) -> ReceptionTurn:
     client = client or anthropic.Anthropic(timeout=20.0, max_retries=0)
     response = client.messages.create(
-        model=EXTRACTION_MODEL, max_tokens=1600,
+        model=EXTRACTION_MODEL, max_tokens=MAX_TOKENS,
         system=[{"type": "text", "text": system_prompt(), "cache_control": {"type": "ephemeral"}}],
         output_config={"format": {"type": "json_schema", "schema": _schema()}, "effort": "low"},
         messages=_messages(dialogue, facts),
@@ -108,8 +112,19 @@ ABBREVIATIONS = {"ave": "avenue", "st": "street", "rd": "road", "blvd": "bouleva
 _CJK = re.compile(r"[぀-ヿ㐀-鿿가-힯]")
 
 
+def _without_latin_accents(text: str) -> str:
+    """Drops accents from Latin letters only: callers often type without them and Claude restores them
+    ("Léogâne" for "leogane"). Marks on other letters (Cyrillic й, kana voicing) make other letters."""
+    kept = []
+    for char in unicodedata.normalize("NFD", text):
+        if "\u0300" <= char <= "\u036f" and kept and kept[-1] < "\u0250":  # a combining mark after a Latin letter
+            continue
+        kept.append(char)
+    return unicodedata.normalize("NFC", "".join(kept))
+
+
 def _normalized(text: str) -> str:
-    return " ".join(text.casefold().translate(_QUOTES).split())
+    return " ".join(_without_latin_accents(text.casefold()).translate(_QUOTES).split())
 
 
 def _covered(token: str, compact: str) -> bool:

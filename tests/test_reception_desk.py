@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
+from dualuse import reception
 from dualuse.api import app
 from dualuse.extract import Classification, Extraction
 from dualuse.holdqueue import Conflict, HoldQueue
@@ -483,12 +484,65 @@ def test_offline_mode_flags_a_language_it_cannot_read_and_answers_in_it():
 @pytest.mark.parametrize("texts, location, kept", [
     (["It is 450 Maple Ave. There are flames"], "450 Maple Avenue", True),
     (["金水区", "花园路88号，有火"], "金水区花园路88号", True),
+    (["강남구", "역삼동에 불이 났어요"], "강남구역삼동", True),
+    (["Nou nan leogane, kay la kraze"], "Léogâne", True),
     (["Fire at the corner of 5th and Main Street"], "5 Main Street", False),
     (["Oak and 3rd, I just saw flames"], "3 Oak St", False),
 ])
 def test_the_location_check_uses_whole_words_and_street_abbreviations(texts, location, kept):
     turn = model_turn(caller(*texts), client=FakeClient(interview([], life=False, location=location)))
     assert (turn.classification.extraction.location == location) is kept
+
+
+@pytest.mark.parametrize("said, quote", [
+    ("NOU NAN LEOGANE TOUT KAY YO KRAZE", "nou nan Léogâne"),
+    ("mi nino no respira", "mi niño no respira"),
+])
+def test_a_quote_with_accents_the_caller_left_out_is_still_their_words(said, quote):
+    turn = model_turn(caller(said), client=FakeClient(interview([quote])))
+    assert turn.classification.extraction.evidence == [quote] and not turn.review
+
+
+@pytest.mark.parametrize("said, quote", [
+    ("NOU PA GEN ANYEN POU NOU MANGE", "pa gen anyen pou nou manje"),  # respelled, not only accented
+    ("はしがこわれた", "ばしがこわれた"),  # a voiced kana is another syllable, not an accent
+    ("мои соседи заперты", "мой соседи заперты"),  # й is a letter of its own, not an accented и
+])
+def test_a_quote_with_other_letters_is_still_dropped(said, quote):
+    turn = model_turn(caller(said), client=FakeClient(interview([quote])))
+    assert turn.classification.extraction.evidence == [] and quote in turn.review
+
+
+class TokenLimitedClient(FakeClient):
+    """Like the API: an answer longer than the request's max_tokens comes back cut off."""
+
+    def __init__(self, payload, answer_tokens):
+        super().__init__(payload)
+        self.answer_tokens = answer_tokens
+
+    def create(self, **kwargs):
+        response = super().create(**kwargs)
+        if self.answer_tokens > kwargs["max_tokens"]:
+            response.stop_reason = "max_tokens"
+        return response
+
+
+def test_an_answer_with_long_hidden_thinking_still_completes():
+    # On recorded Creole messages, some answers ran past 1,600 output tokens, most of them hidden thinking.
+    turn = model_turn(caller("Nou bloke anba kay la"), client=TokenLimitedClient(interview(["bloke anba kay la"]), 2400))
+    assert turn.classification.tier == Tier.IMMEDIATE and not turn.review
+
+
+def test_the_desk_still_gives_up_on_a_turn_after_20_seconds_without_retrying(monkeypatch):
+    settings = {}
+
+    def client(**kwargs):
+        settings.update(kwargs)
+        return FakeClient(interview(["not breathing"]))
+
+    monkeypatch.setattr(reception.anthropic, "Anthropic", client)
+    model_turn(caller("he is not breathing"))
+    assert settings == {"timeout": 20.0, "max_retries": 0}
 
 
 @pytest.mark.parametrize("reply", ["Firefighters are on the way, and you are next in line, so there is no need to call 911.",

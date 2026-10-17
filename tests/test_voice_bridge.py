@@ -132,7 +132,7 @@ def test_speech_during_a_running_turn_is_sent_after_it_and_only_the_latest_reply
     release = threading.Event()
     started = threading.Event()
 
-    def slow_turn(dialogue):
+    def slow_turn(dialogue, facts="", client=None):
         started.set()
         assert release.wait(5)
         return reception.rules_turn(dialogue)

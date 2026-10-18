@@ -45,4 +45,8 @@
   * Restarted API port 8000 and UI port 8501 from the main checkout, each with the old process's working directory, environment and command line. The API kept `DUALUSE_QUEUE_DB=.tmp/voice-main.sqlite3` and `DUALUSE_MAP_URL`; the UI kept `DUALUSE_MAP_URL`. Logs append to `.tmp/public-map-demo/`. This also deployed record 025 (short welcome, fixed intake), which was committed but not yet running.
   * Local checks: API `/health` returned ok, and the stored desk came back (67 calls, 10 waiting, model mode). The map status showed no sync or locate error, and UI `/_stcore/health` returned ok. Within a minute, 9 of 16 calls with a stated place were located; the new call `南加州大学，西28街` fell back to `南加州大学` and landed on USC.
   * Public checks, read only: `https://demo.211deskdemo.site/` and `/plugins/map/health` returned 200. The public map state listed 66 calls, 9 located automatically, with the Nominatim geocoder. In a browser, the public map drew the markers and showed the automatic-lookup line on the cards.
-* Not verified: the voice bridge on port 8010 was not restarted. It started at 17:36 PT, so record 023's bridge change needs its restart. No phone call was made after the restart.
+* Voice bridge, about 18:10 PT, at the user's request:
+  * Port 8010 was restarted from the main checkout at `5a33d48`, which includes [record 023](2026-10-17-023-voice-partial-utterances.md)'s bridge change (`19c7d91`). It kept the old process's command line and environment, with secrets from `.env`. No phone call was in progress.
+  * The old process had started at 17:36 PT, from the working tree, before `19c7d91` was committed.
+  * Output now appends to `.tmp/logs/voice-8010.log`. Startup logged no error, and `/health` returned 200 locally and through the bridge's quick tunnel.
+* Not verified: a phone call after the restarts.

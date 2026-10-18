@@ -13,7 +13,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from dualuse import api, reception
 from dualuse.profiles import PROFILES
-from dualuse.voice_bridge import ACK, DEMO_NOTICE, DESK_DOWN, ENGLISH_ONLY, HANDOFF, STILL_HERE, create_app, verify_signature
+from dualuse.voice_bridge import ACK, DEMO_NOTICE, DESK_DOWN, ENGLISH_ONLY, HANDOFF, STILL_HERE, create_app, unheard, verify_signature
 
 SECRET = "ws-secret"
 KEY = "retell-key"
@@ -139,6 +139,62 @@ def test_only_new_caller_turns_are_forwarded(bridge, desk):
         ws.send_json(turn(2, "I need food for my family", "we are at 12 Oak Street"))
         assert final_response(ws)["response_id"] == 2
         assert only_call(desk)["transcript"] == ["I need food for my family", "we are at 12 Oak Street"]
+
+
+@pytest.mark.parametrize("heard, said, new", [
+    ([], ["Hey,"], "Hey,"),
+    (["Hey,"], ["Hey, hey, hey—my building is blowing."], "hey, hey—my building is blowing."),
+    (["I don't know where to go."], ["I don't know where to go, can I get some help?"], "can I get some help?"),
+    (["I see smoke"], ["I see smoke."], ""),
+    (["I need fo"], ["I need food"], "I need food"),
+    (["Hey, my building is blowing."], ["Hey, my building is blowing.", " Someone put a bomb in it."], "Someone put a bomb in it."),
+])
+def test_unheard_finds_words_retell_added_after_asking_for_a_reply(heard, said, new):
+    assert unheard(heard, said) == new
+
+
+def test_words_added_to_an_utterance_already_forwarded_reach_the_desk_and_get_a_reply(bridge, desk):
+    # Retell asks for a reply after the first word, then asks again with the same utterance grown.
+    with connect(bridge) as ws:
+        opened(ws)
+        ws.send_json(turn(1, "Hey,"))
+        final_response(ws)
+        before = len(only_call(desk)["dialogue"])
+        ws.send_json(turn(2, "Hey, my house is on fire and my kid is inside"))
+        reply = final_response(ws)
+        call = only_call(desk)
+        assert call["transcript"] == ["Hey,", "my house is on fire and my kid is inside"]
+        assert reply["response_id"] == 2
+        assert reply["content"] == assistant_texts(call, before + 1)
+        assert reply["content"]
+
+
+def test_a_repeated_request_during_a_running_turn_is_answered_with_the_desk_reply(bridge, desk, monkeypatch):
+    release = threading.Event()
+    started = threading.Event()
+
+    def slow_turn(dialogue, facts="", client=None):
+        started.set()
+        assert release.wait(5)
+        return reception.rules_turn(dialogue)
+
+    monkeypatch.setattr(reception, "model_turn", slow_turn)
+    api.QUEUE.mode = "model"
+    with connect(bridge) as ws:
+        opened(ws)
+        ws.send_json(turn(1, "I see smoke"))
+        assert ws.receive_json()["content"] == ACK
+        assert started.wait(3)
+        # No new words: an empty complete reply here would close response 2 and Retell would drop the desk's reply.
+        ws.send_json(turn(2, "I see smoke."))
+        release.set()
+        reply = final_response(ws)
+        call = only_call(desk)
+        assert call["transcript"] == ["I see smoke"]
+        assert reply["response_id"] == 2
+        last_caller = max(i for i, t in enumerate(call["dialogue"]) if t["speaker"] == "caller")
+        assert reply["content"] == assistant_texts(call, last_caller + 1)
+        assert reply["content"]
 
 
 def test_speech_during_a_running_turn_is_sent_after_it_and_only_the_latest_reply_is_spoken(bridge, desk, monkeypatch):

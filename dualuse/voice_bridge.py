@@ -31,6 +31,7 @@ STILL_HERE = "I'm still here, and you remain in the queue."
 NOT_RECORDED ="I could not record that. You remain in the queue."
 DESK_DOWN = "The reception system is having a problem right now. You have not been removed from the queue."
 SIGNATURE = re.compile(r"v=(\d+),d=([0-9a-f]+)")
+WORD = re.compile(r"\w+")
 
 
 def verify_signature(body: bytes, header: str | None, api_key: str, now_ms: int) -> bool:
@@ -48,7 +49,7 @@ class Line:
     def __init__(self, desk_id: str, spoken: int):
         self.desk_id = desk_id
         self.spoken = spoken  # desk dialogue entries already accounted for
-        self.forwarded = 0  # caller transcript entries already sent to the desk
+        self.heard: list[str] = []  # caller utterances as Retell last sent them, all forwarded
         self.pending: list[str] = []
         self.last_desk_speech = ""
         self.response_id = 0
@@ -69,6 +70,27 @@ class Line:
     async def respond(self, content: str, complete: bool = True, response_id: int | None = None):
         await self.send({"response_type": "response", "response_id": self.response_id if response_id is None else response_id,
                          "content": content, "content_complete": complete})
+
+
+def unheard(heard: list[str], said: list[str]) -> str:
+    """Caller speech in `said`, Retell's user utterances, that `heard` (those already forwarded) lacks.
+
+    Retell asks for a reply when the caller pauses, then asks again with the same utterance grown
+    ("Hey," then "Hey, hey, hey—my building is blowing."), so a forwarded utterance can gain words.
+    Only the added words are new; if the recognizer revised earlier words, the whole utterance is.
+    """
+    def key(word: str) -> list[str]:
+        return WORD.findall(word.lower())  # punctuation and case changes are not new speech
+
+    new = []
+    for i, text in enumerate(said):
+        old = heard[i].split() if i < len(heard) else []
+        words = text.split()
+        same = 0
+        while same < min(len(old), len(words)) and key(old[same]) == key(words[same]):
+            same += 1
+        new += words[same:] if same == len(old) else words
+    return " ".join(new)
 
 
 def new_speech(line: Line, call: dict) -> str:
@@ -215,12 +237,15 @@ def create_app(desk: httpx.AsyncClient, ws_secret: str, retell_api_key: str, *,
                 elif kind == "response_required":
                     line.response_id = message["response_id"]
                     said = [t["content"] for t in message["transcript"] if t["role"] == "user"]
-                    text = " ".join(s.strip() for s in said[line.forwarded:] if s.strip())
-                    line.forwarded = len(said)
+                    text = unheard(line.heard, said)
+                    line.heard = said
                     if line.status not in ("waiting", "connecting", "handed_off"):
                         await line.respond(HANDOFF)
                     elif not text:
-                        await line.respond("")
+                        # A running turn answers the newest response id. An empty complete reply
+                        # would close that id, and Retell would drop the desk's reply.
+                        if not line.turn or line.turn.done():
+                            await line.respond("")
                     else:
                         line.pending.append(text)
                         await line.respond(ACK, complete=False)

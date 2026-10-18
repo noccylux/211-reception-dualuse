@@ -28,6 +28,8 @@ from dualuse.profiles import PROFILES
 
 SYNC_INTERVAL_S = 1.0
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
+# Calls whose caller can still speak, as in HoldQueue.say; the map lists them as in progress.
+LIVE_STATUSES = ("waiting", "connecting", "handed_off")
 
 
 class SwappableApp:
@@ -92,6 +94,7 @@ class MapSync:
         self.mounted = SwappableApp(new_map_app(self.profile))
         self.lock = threading.Lock()
         self.pushed: dict[str, tuple[str, int]] = {}  # call_id -> (fingerprint, revision)
+        self.live: set[str] = set()  # call ids marked active in the mounted map
         self.status = {"synced_at": None, "error": None, "locate_error": None, "calls": 0, "other_lines": 0,
                        "profile": self.profile, "area": PROFILES[self.profile].map_area.name}
         self._stop = threading.Event()
@@ -101,6 +104,7 @@ class MapSync:
         old = self.mounted.app
         self.mounted.app = new_map_app(profile)
         self.pushed.clear()
+        self.live = set()
         self.profile = profile
         self.status.update(profile=profile, area=PROFILES[profile].map_area.name, calls=0)
         old.state.store.close()
@@ -120,6 +124,13 @@ class MapSync:
                     continue
                 store.upsert_call({**payload, "revision": revision + 1})
                 self.pushed[call["call_id"]] = (fingerprint, revision + 1)
+            # The map lists live calls first; activity is lifecycle only, never location consent.
+            live = {c["call_id"] for c in calls if c["status"] in LIVE_STATUSES}
+            for call_id in live - self.live:
+                store.set_active_call(call_id, True)
+            for call_id in self.live - live:
+                store.set_active_call(call_id, False)
+            self.live = live
             # A new revision of an already located place keeps its point without another lookup.
             self.mounted.app.state.geo.apply_auto_lookups()
             self.status.update(synced_at=time.time(), error=None, calls=len(self.pushed),

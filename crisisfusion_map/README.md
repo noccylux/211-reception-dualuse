@@ -175,6 +175,10 @@ The plugin makes no automatic requests unless its host calls `await app.state.ge
 * An operator's lookup, confirmation or clear is never replaced. A failed lookup is shown on the call card and retried after 60 s.
 * `app.state.geo.apply_auto_lookups()` re-applies cached results to new revisions without a request.
 
+## Calls in progress (added in this repository)
+
+Calls the host marks active with `set_active_call` are listed newest first in a strip above the map, each with "Show on map" when it has a point. Their cards come first with an "In progress" tag, and their markers carry a teal ring and sit on top. The 211 desk marks a call active while its caller can still speak.
+
 ## 验证
 
 ```powershell

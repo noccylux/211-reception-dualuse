@@ -57,6 +57,21 @@ def test_desk_extracted_place_reaches_the_map_without_an_operator_click(monkeypa
     assert dict(request.url.params)["q"] == "123 Main St" and "trapped" not in str(request.url)
 
 
+def test_calls_in_progress_are_active_on_the_map_until_they_end():
+    queue = HoldQueue(1800, mode="rules")
+    sync = MapSync(queue.snapshot)
+    live, ended = queue.add(), queue.add()
+    queue.hang_up(ended.call_id)
+    sync.sync_once()
+
+    def active():
+        return {c["call_id"]: c["active"] for c in sync.mounted.app.state.geo.snapshot()["calls"]}
+    assert active() == {live.call_id: True, ended.call_id: False}
+    queue.hang_up(live.call_id)
+    sync.sync_once()
+    assert active() == {live.call_id: False, ended.call_id: False}
+
+
 def test_locator_failures_are_reported_not_hidden(monkeypatch):
     sync = MapSync(HoldQueue(1800, mode="rules").snapshot)
 

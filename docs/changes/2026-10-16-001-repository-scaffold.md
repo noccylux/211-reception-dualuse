@@ -33,7 +33,7 @@
 ## Verification
 
 * `uv lock` and `uv sync --frozen` with Python 3.14.7 succeeded; Torch
-  2.14.1+cu132 reports CUDA available on the GPU.
+  2.14.1+cu132 reported CUDA available on the GPU (Torch was dropped later, see record 028).
 * `scripts/check-launcher.sh` passed; `pytest`: 4 passed.
 * Started both `.claude/launch.json` servers: `GET /health` returned
   `{"status":"ok"}` and the Streamlit page showed the API as ok.

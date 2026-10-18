@@ -403,9 +403,14 @@ elif view == "Incident map":
     status = initial["map"]
     if status["error"]:
         st.error(f"The map stopped updating: {status['error']}")
+    if status["locate_error"]:
+        st.error(f"Automatic address lookup stopped: {status['locate_error']}")
     st.info(f"{status['area']} service area for the active line, from the CrisisFusion map plugin. The base map "
             "covers the world; only this line's calls are drawn. A call located outside the area is grey and marked "
-            "'outside service area — transfer': real lines route by jurisdiction. Test calls can come from anywhere in the world; use 'Show all calls' on the map to reach them. Shape shows how far a caller's stated "
+            "'outside service area — transfer': real lines route by jurisdiction. Test calls can come from anywhere in the world; use 'Show all calls' on the map to reach them. "
+            "The place the desk extracts from a call is looked up automatically in OpenStreetMap, inside the service "
+            "area only; only that place text is sent, never the call text. A single match is drawn as an unverified "
+            "diamond until a person confirms it; several matches are listed for the operator. Shape shows how far a caller's stated "
             "address is verified; color shows official alerts or USGS quakes around it, fetched only when you press "
             "refresh. Grey means unknown or out of area, never safe. Calls with coordinates from test data are labeled "
             "synthetic replay. The map does not change any queue tier.")

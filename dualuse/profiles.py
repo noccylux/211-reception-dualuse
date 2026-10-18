@@ -18,7 +18,9 @@ class MapArea:
     boundary: str  # GeoJSON in crisisfusion_map/data; source and sha256 in geo_sources.json
     attribution: str
     view: tuple[float, float, int]  # lat, lon, zoom
-    geocoder: str  # "census" covers US addresses only; "nominatim" (OpenStreetMap) elsewhere
+    # "nominatim" (OpenStreetMap) also matches landmarks, place names and streets without a number, which
+    # callers say; "census" matches only a US number, street and city.
+    geocoder: str
     feeds: tuple[str, ...]  # official feeds the plugin fetches on manual refresh
     locality: str  # regex for wording that names the area's city or postal code
     nws_zone: str = ""  # county UGC code, needed only with the NWS feed
@@ -48,7 +50,7 @@ PROFILES = {
         emergency={"en": "911", "es": "911", "zh": "911"},
         address_hint="US street address: number, street, city; or a cross street or landmark",
         map_area=MapArea(name="Los Angeles County", boundary="la_county.geojson", attribution="LA County GIS (simplified)",
-                         view=(34.1, -118.2, 9), geocoder="census", feeds=("nws", "usgs"), nws_zone="CAC037",
+                         view=(34.1, -118.2, 9), geocoder="nominatim", feeds=("nws", "usgs"), nws_zone="CAC037",
                          locality=r"\b(?:Los Angeles|LA County|Santa Monica|Long Beach|Pasadena|CA|California|9\d{4})\b|洛杉矶|加州"),
         welcome_extra="Para español, hable o escriba en español. 如需中文服务，请直接说中文或输入中文。",
     ),
@@ -60,7 +62,7 @@ PROFILES = {
                    "en": "110 (police), 119 (fire) or 120 (ambulance)"},
         address_hint="Chinese address order: district, road, number, residential compound, building, unit",
         # Shanghai is an example city for the demo, not derived from any data: callers can be anywhere.
-        # NWS covers the US only; USGS reports earthquakes world-wide. Census does not geocode China.
+        # NWS covers the US only; USGS reports earthquakes world-wide.
         map_area=MapArea(name="Shanghai Municipality (example city)", boundary="shanghai.geojson",
                          attribution="OpenStreetMap contributors (ODbL), simplified; not an official administrative boundary",
                          view=(31.23, 121.47, 9), geocoder="nominatim", feeds=("usgs",),

@@ -35,6 +35,19 @@ def checked_label(label):
     return label
 
 
+def extent_m(box):
+    """Half the diagonal of a [south, north, west, east] box: how far the matched place reaches from its point."""
+    try:
+        south, north, west, east = (float(v) for v in box)
+    except (TypeError, ValueError):
+        return None
+    if not all(math.isfinite(v) for v in (south, north, west, east)):
+        return None
+    height = (north-south) * 111_320
+    width = (east-west) * 111_320 * math.cos(math.radians((north+south) / 2))
+    return round(math.hypot(height, width) / 2)
+
+
 def result(matches, source):
     return {'status':'single_match' if len(matches)==1 else 'multiple_matches' if matches else 'no_match',
         'matches':matches, 'source_url':source,
@@ -49,7 +62,8 @@ class Census:
     SOURCE = 'https://www.census.gov/programs-surveys/geography/technical-documentation/complete-technical-documentation/census-geocoder.html'
 
     @classmethod
-    async def lookup(cls, client, address, bbox=None):
+    async def lookup(cls, client, address, bbox=None, bounded=False):
+        # Census takes no area filter; callers keep only the matches inside their area.
         data = await read_json(client, cls.URL, {'address':address,'benchmark':'Public_AR_Current','format':'json'})
         values = data.get('result', {}).get('addressMatches')
         if not isinstance(values, list) or len(values) > 20:
@@ -75,7 +89,7 @@ class Nominatim:
     _last = 0.0
 
     @classmethod
-    async def lookup(cls, client, address, bbox=None):
+    async def lookup(cls, client, address, bbox=None, bounded=False):
         async with cls._lock:
             wait = cls._last + cls.MIN_INTERVAL_S - time.monotonic()
             if wait > 0:
@@ -84,6 +98,9 @@ class Nominatim:
             params = {'q':address, 'format':'jsonv2', 'limit':5}
             if bbox:
                 params['viewbox'] = ','.join(str(v) for v in bbox)  # prefer, not restrict: out-of-area matches stay visible
+                if bounded:
+                    # Automatic lookups only: an unbounded search for a street name returns other counties first.
+                    params['bounded'] = 1
             values = await read_json(client, cls.URL, params)
         if not isinstance(values, list) or len(values) > 20:
             raise ValueError('Invalid or excessive address matches')
@@ -94,7 +111,7 @@ class Nominatim:
             except (TypeError, ValueError):
                 raise ValueError('Invalid geocoder coordinates') from None
             matches.append({'label':checked_label(item.get('display_name')), 'lat':lat, 'lon':lon, 'source':cls.SOURCE_ID,
-                'accuracy_m':None, 'source_url':cls.SOURCE, 'osm_type':str(item.get('osm_type', ''))[:20],
+                'accuracy_m':None, 'extent_m':extent_m(item.get('boundingbox')), 'source_url':cls.SOURCE, 'osm_type':str(item.get('osm_type', ''))[:20],
                 'precision_note':'OpenStreetMap gazetteer point (© OpenStreetMap contributors, ODbL); may be a street or area centre. Not proof of caller presence.'})
         return result(matches, cls.SOURCE)
 

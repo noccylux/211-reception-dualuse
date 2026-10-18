@@ -24,7 +24,7 @@ Required by the rules. Add each tool when it is first used.
 
 | Tool | Used for |
 |---|---|
-| Claude Code | Coding assistant for the repository: code review, the playbook agent, line profiles, surge injector, the recorded-message evaluation, operator text replies and the compact operator queue, tests and docs |
+| Claude Code | Coding assistant for the repository: code review, the playbook agent, line profiles, surge injector, the recorded-message evaluation, operator text replies and the compact operator queue, automatic map location of stated places, tests and docs |
 | OpenAI Codex | Dataset acquisition and integrity checks, the multi-turn reception implementation, tests, repository documentation, Twist 2/3 response drafts, staging branch integration, and the Devpost text update and code review for the mentor-feedback changes |
 | ChatGPT (6 Pro) | Idea evaluation, competitor and dataset research before the build |
 | Claude API (Anthropic SDK, `claude-haiku-5-5`; evaluation comparison with `claude-sonnet-5-5`) | The reception agent's replies in the caller's language from playbooks, and structured caller-field extraction; code controls tier rules, emergency referrals and handoff. The same calls ran on recorded disaster messages for the evaluation ([evaluation.md](evaluation.md)) |
@@ -35,8 +35,10 @@ Third-party code: `crisisfusion_map/` is the CrisisFusion map plugin 1.0.0,
 written by a classmate as a separate demo. We translated its UI strings to
 English and changed one test path; we then generalized its LA County
 boundary into a host-chosen service area (boundary, view, geocoder, feeds),
-added an OpenStreetMap Nominatim geocoder for areas outside the US and an
-out-of-area marker. Leaflet 1.9.4 (BSD-2-Clause) ships inside it.
+added an OpenStreetMap Nominatim geocoder, now used for both lines, an
+automatic lookup of the place the desk extracts (inside the service area
+only, drawn as unverified), and an out-of-area marker. Leaflet 1.9.4
+(BSD-2-Clause) ships inside it.
 
 `crisisfusion_scoring/` is the CrisisFusion scoring plugin 1.0.0 by the same
 classmate (deterministic English/Spanish rules, 0–100 Human Attention Index),
@@ -47,6 +49,8 @@ Before submitting, name the author of both plugins and list the AI tools they us
 
 Boundary data: Shanghai Municipality (the example city for the 12345 profile) from OpenStreetMap contributors (ODbL),
 relation 913067 via Nominatim; LA County from LA County GIS.
+
+Geocoding: OpenStreetMap Nominatim (© OpenStreetMap contributors, ODbL) for both lines, at most one request a second.
 
 ## Pitch outline (5 minutes)
 

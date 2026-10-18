@@ -103,6 +103,12 @@ def _mentions(value, revision, source, timestamp, *, label=False):
     return sorted(found, key=lambda c: c["span"][0])
 
 
+def place_mentions(value):
+    """Places recognized in a short location text, most specific first: what a lookup tries when the whole text finds nothing."""
+    usable = [c for c in _mentions(value, None, "", None) if not c["negated"] and not c["historical"]]
+    return list(dict.fromkeys(c["quote"] for c in sorted(usable, key=lambda c: -_RANK[c["kind"]])))
+
+
 def assess_address(call, confirmation=None, locality=None):
     """Return an independent, JSON-safe map assessment without mutating inputs.
 

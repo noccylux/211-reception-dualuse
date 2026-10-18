@@ -164,6 +164,17 @@ NWS / USGS 只在手动刷新时请求固定官方 HTTPS 端点；区域加载�
 
 LA County 县界及来源记录保存在包内 `data/`。Leaflet 1.9.4 JS、CSS 和 BSD 许可在 `static/vendor/leaflet/`，地图保留 LA County / OSM 署名。`plugin.json` 是主体集成的机器可读声明。网络源规则和获取时间约束均保留；官方数据服务变化时需重新验证适配器。
 
+## Automatic lookup (host-driven; added in this repository)
+
+The plugin makes no automatic requests unless its host calls `await app.state.geo.auto_locate_once()`. The 211 desk calls it once a second.
+
+* Each call sends at most one new place to the area's geocoder: a call's `location.label`, never its `text`, with the search bounded to the service area. Each place's result is cached, so a place is sent once.
+* Only matches inside the service area and narrower than 20 km count, so a whole city such as Los Angeles locates nothing. Matches within 150 m of the first are one place.
+* A single match becomes an unconfirmed point (`source: automatic_lookup`, hollow diamond). For a street or area match, its extent is recorded as the uncertainty. Several matches stay candidates in the review form.
+* If the whole label finds nothing, the places recognized inside it are tried, most specific first; for example "Gateway apartment near USC" falls back to "USC".
+* An operator's lookup, confirmation or clear is never replaced. A failed lookup is shown on the call card and retried after 60 s.
+* `app.state.geo.apply_auto_lookups()` re-applies cached results to new revisions without a request.
+
 ## 验证
 
 ```powershell

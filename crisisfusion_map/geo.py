@@ -13,6 +13,7 @@ import json
 import math
 import re
 import secrets
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -22,7 +23,7 @@ import httpx
 from fastapi import HTTPException, Request
 
 from .store import now
-from .addressing import assess_address
+from .addressing import assess_address, place_mentions
 from .exposure import assess_exposure, get_policy as exposure_policy
 from .geocoding import GEOCODERS
 
@@ -32,6 +33,11 @@ LA_COUNTY = {'name': 'Los Angeles County', 'boundary': 'la_county.geojson', 'vie
              'nws_zone': 'CAC037', 'locality': r'\b(?:Los Angeles|LA County|Santa Monica|Long Beach|Pasadena|CA|California|9\d{4})\b|洛杉矶|加州'}
 MAX_BYTES = 4_000_000
 REFRESH_SECONDS = 60
+AUTO_SOURCE = 'automatic_lookup'
+AUTO_RETRY_SECONDS = 60
+SAME_PLACE_M = 150  # a building and its street address are one place, not a choice for the operator
+AREA_EXTENT_M = 100  # a match wider than this is a street or area: its point is only the centre
+MAX_EXTENT_M = 20_000  # a match wider than a city district, such as all of Los Angeles, locates nothing
 
 
 def date(value):
@@ -70,6 +76,12 @@ def in_ring(lon, lat, ring):
         if ((a[1] > lat) != (b[1] > lat)) and lon < (b[0]-a[0]) * (lat-a[1]) / (b[1]-a[1]) + a[0]:
             inside = not inside
     return inside
+
+
+def distance_m(a, b):
+    """Equirectangular distance; exact enough to tell one place from the next street."""
+    x = math.radians(b['lon']-a['lon']) * math.cos(math.radians((a['lat']+b['lat']) / 2))
+    return 6_371_000 * math.hypot(x, math.radians(b['lat']-a['lat']))
 
 
 def bbox_of(boundary):
@@ -255,6 +267,9 @@ class GeoManager:
         self.address_attempts = {}
         self.address_generations = {}
         self.address_epoch = 0
+        self.auto_lookups = {}  # reported place text -> automatic lookup result: each place is sent once
+        self.auto_retry_at = {}  # place -> monotonic time when a failed automatic lookup may run again
+        self.auto_cleared = {}  # call_id -> place whose automatic point an operator cleared
 
     def data(self):
         data = self.engine.s.setdefault('geo_plugin', {'enabled': False, 'providers': {
@@ -568,7 +583,7 @@ class GeoManager:
                 require_current_request()
                 data['address_geocodes'][call_id] = result
                 current = data['address_records'].get(call_id)
-                if not current or current.get('source') in {g.SOURCE_ID for g in GEOCODERS.values()}:
+                if not current or current.get('source') in {g.SOURCE_ID for g in GEOCODERS.values()} | {AUTO_SOURCE}:
                     data['address_records'].pop(call_id, None)
                     if result['status'] == 'single_match':
                         data['address_records'][call_id] = {**result['matches'][0], 'confirmed':False, 'revision':revision,
@@ -576,6 +591,108 @@ class GeoManager:
                 self.engine._audit('geo_address_lookup_result', call_id=call_id, revision=revision, status=result['status'], match_count=len(result['matches']))
                 self.engine._save()
             return {**self.snapshot(), 'geocode_result':result}
+
+    @staticmethod
+    def reported_place(call):
+        """The host's location label of a call without coordinates: the only text an automatic lookup sends."""
+        location = call.get('location')
+        if not isinstance(location, dict) or 'lat' in location:
+            return None
+        label = str(location.get('label') or '').strip()
+        return label if 2 <= len(label) <= 300 else None
+
+    def area_matches(self, found):
+        """Keep the matches inside the service area and narrower than a city; matches next to the first are one place."""
+        inside = [m for m in found['matches'] if self.area.contains(m['lon'], m['lat']) and (m.get('extent_m') or 0) <= MAX_EXTENT_M]
+        if inside and all(distance_m(inside[0], m) <= SAME_PLACE_M for m in inside[1:]):
+            inside = inside[:1]
+        status = 'single_match' if len(inside) == 1 else 'multiple_matches' if inside else 'no_match'
+        return {**found, 'status': status, 'matches': [{**m, 'inside_county': True} for m in inside]}
+
+    async def auto_locate_once(self):
+        """Look up one place a caller stated that has no result yet, then point every call that stated it.
+
+        The host calls this; the plugin never starts it. Only the host's location label is sent, never
+        call text, and only matches inside the service area count. When the whole text finds nothing, the
+        places recognized inside it are tried in turn ("Gateway apartment near USC" -> "USC"). A single
+        match becomes an unconfirmed point; several stay candidates for a person. A failed lookup is shown
+        and retried later.
+        """
+        with self.engine.lock:
+            data = self.data()
+            if not data['enabled'] or not self.engine.s['settings']['internet_available']:
+                return
+            places = {}
+            for call_id, call in self.engine.s['calls'].items():
+                place = self.reported_place(call)
+                if place and self.auto_cleared.get(call_id) != place:
+                    places.setdefault(place, []).append(call_id)
+            at = time.monotonic()
+            place = next((p for p in places if p not in self.auto_lookups or self.auto_retry_at.get(p, math.inf) <= at), None)
+        if place is not None:
+            query, retry_at = place, None
+            try:
+                async with httpx.AsyncClient(transport=self.transport, timeout=15, follow_redirects=False,
+                        headers={'User-Agent':'CrisisFusion/0.5 (local research prototype)'}) as client:
+                    for query in dict.fromkeys([place, *place_mentions(place)]):
+                        found = await asyncio.wait_for(self.area.geocoder.lookup(client, query, self.area.bbox, bounded=True), 20)
+                        result = self.area_matches(found)
+                        if result['matches']:
+                            break
+            except Exception as failure:
+                reason = f'HTTP {failure.response.status_code}' if isinstance(failure, httpx.HTTPStatusError) else type(failure).__name__
+                result = {'status': 'lookup_failed', 'matches': [],
+                          'detail': f'Automatic lookup failed ({reason}); it runs again in {AUTO_RETRY_SECONDS} s. Manual lookup and confirmation remain available.'}
+                retry_at = time.monotonic() + AUTO_RETRY_SECONDS
+            with self.engine.lock:
+                self.auto_lookups[place] = {**result, 'place': place, 'query': query, 'fetched_at': now(), 'automatic': True}
+                self.auto_retry_at.pop(place, None)
+                if retry_at:
+                    self.auto_retry_at[place] = retry_at
+                self.engine._audit('geo_address_auto_lookup', call_ids=places[place], provider=self.area.geocoder.NAME,
+                                   status=result['status'], match_count=len(result['matches']))
+                self.engine._save()
+        self.apply_auto_lookups()
+
+    def apply_auto_lookups(self):
+        """Give each call the automatic lookup of its current place, bound to its current revision.
+
+        A person's lookup or confirmation is never replaced, and a cleared point stays cleared until the
+        caller states another place. A call whose place changed loses its old point until the new place
+        is looked up.
+        """
+        with self.engine.lock:
+            data = self.data()
+            if not data['enabled']:
+                return
+            changed = False
+            for call_id, call in self.engine.s['calls'].items():
+                record, lookup = data['address_records'].get(call_id), data['address_geocodes'].get(call_id)
+                if (record and record.get('source') != AUTO_SOURCE) or (lookup and not lookup.get('automatic')):
+                    continue
+                place = self.reported_place(call)
+                result = self.auto_lookups.get(place) if place and self.auto_cleared.get(call_id) != place else None
+                if result is None:
+                    if record or lookup:
+                        data['address_records'].pop(call_id, None)
+                        data['address_geocodes'].pop(call_id, None)
+                        changed = True
+                    continue
+                revision = call.get('revision', 0)
+                if lookup and (lookup['place'], lookup['revision'], lookup['fetched_at']) == (place, revision, result['fetched_at']):
+                    continue
+                data['address_geocodes'][call_id] = {**result, 'call_id': call_id, 'revision': revision}
+                if result['status'] == 'single_match':
+                    match = result['matches'][0]
+                    extent = match.get('extent_m')
+                    data['address_records'][call_id] = {**match, 'source': AUTO_SOURCE, 'confirmed': False, 'revision': revision,
+                        'accuracy_m': extent if extent is not None and extent >= AREA_EXTENT_M else None,
+                        'matched_address': match['label'], 'confirmed_at': None, 'located_at': now(), 'query': result['query']}
+                else:
+                    data['address_records'].pop(call_id, None)
+                changed = True
+            if changed:
+                self.engine._save()
 
     def confirm_address(self, payload):
         if set(payload)-{'call_id','label','lat','lon','accuracy_m','reviewer','note','confirmed','revision'} or payload.get('confirmed') is not True:
@@ -606,6 +723,8 @@ class GeoManager:
     def delete_address(self, call_id):
         with self.engine.lock:
             self.address_generations[call_id] = self.address_generations.get(call_id, 0) + 1
+            if call_id in self.engine.s['calls']:
+                self.auto_cleared[call_id] = self.reported_place(self.engine.s['calls'][call_id])
             self.data()['address_records'].pop(call_id, None)
             self.data()['address_geocodes'].pop(call_id, None)
             self.engine._audit('geo_address_confirmation_removed', call_id=call_id)

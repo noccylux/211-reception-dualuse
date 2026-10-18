@@ -8,7 +8,13 @@ official feeds); only that line's calls are drawn, and a call located outside
 the area is flagged for transfer, because real lines route by jurisdiction.
 The plugin never changes a tier; the tier and the shadow scorer's band are
 passed only as display labels.
+
+The place the desk extracted from the caller's words is looked up
+automatically, inside the service area only, so a call reaches the map
+without an operator click. Only that place text leaves the desk, never the
+transcript. A single match is drawn as unverified until a person confirms it.
 """
+import asyncio
 import hashlib
 import json
 import os
@@ -86,7 +92,7 @@ class MapSync:
         self.mounted = SwappableApp(new_map_app(self.profile))
         self.lock = threading.Lock()
         self.pushed: dict[str, tuple[str, int]] = {}  # call_id -> (fingerprint, revision)
-        self.status = {"synced_at": None, "error": None, "calls": 0, "other_lines": 0,
+        self.status = {"synced_at": None, "error": None, "locate_error": None, "calls": 0, "other_lines": 0,
                        "profile": self.profile, "area": PROFILES[self.profile].map_area.name}
         self._stop = threading.Event()
         self._thread = None
@@ -114,8 +120,22 @@ class MapSync:
                     continue
                 store.upsert_call({**payload, "revision": revision + 1})
                 self.pushed[call["call_id"]] = (fingerprint, revision + 1)
+            # A new revision of an already located place keeps its point without another lookup.
+            self.mounted.app.state.geo.apply_auto_lookups()
             self.status.update(synced_at=time.time(), error=None, calls=len(self.pushed),
                                other_lines=len(snapshot["calls"]) - len(calls))
+
+    async def locate_forever(self):
+        """Looks up one new stated place per interval in the server's event loop, where the
+        geocoder's rate limit (Nominatim allows one request a second) is shared with operator lookups."""
+        while True:
+            await asyncio.sleep(SYNC_INTERVAL_S)
+            try:
+                await self.mounted.app.state.geo.auto_locate_once()
+                self.status["locate_error"] = None
+            except Exception as error:
+                # Kept apart from the sync error, which each successful sync clears.
+                self.status["locate_error"] = f"{type(error).__name__}: {getattr(error, 'detail', error)}"
 
     def reset(self):
         with self.lock:

@@ -1,4 +1,5 @@
 """211 reception API. One process per SQLite database; no telephone calls are placed."""
+import asyncio
 import math
 import os
 import threading
@@ -56,9 +57,11 @@ MAP = MapSync(lambda: QUEUE.snapshot(), shadow=lambda call_id: SHADOW.opinion(ca
 async def lifespan(app):
     SHADOW.start()
     MAP.start()
+    locator = asyncio.create_task(MAP.locate_forever())
     try:
         yield
     finally:
+        locator.cancel()
         MAP.stop()
         SHADOW.stop()
 

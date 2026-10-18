@@ -1,7 +1,11 @@
+import asyncio
+
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from dualuse import api
+from crisisfusion_map.geocoding import Nominatim
+from dualuse import api, mapview
 from dualuse.holdqueue import HoldQueue
 from dualuse.mapview import MapSync, new_map_app
 
@@ -26,6 +30,48 @@ def test_sync_pushes_caller_words_location_and_tier_label_only_on_change():
     queue.say(call.call_id, "my neighbor is outside")
     sync.sync_once()
     assert map_calls(sync)[call.call_id]["revision"] == 2
+
+
+def test_desk_extracted_place_reaches_the_map_without_an_operator_click(monkeypatch):
+    monkeypatch.setattr(Nominatim, "MIN_INTERVAL_S", 0)
+    requests = []
+
+    def nominatim(request):
+        requests.append(request)
+        return httpx.Response(200, json=[{"display_name": "123, Main Street, Los Angeles", "lat": "34.0525",
+                                          "lon": "-118.2432", "osm_type": "node"}])
+    queue = HoldQueue(1800, mode="rules")
+    sync = MapSync(queue.snapshot)
+    sync.mounted.app.state.geo.transport = httpx.MockTransport(nominatim)
+    call = queue.add()
+    queue.say(call.call_id, "There is a fire at 123 Main St and I am trapped")
+    sync.sync_once()
+    asyncio.run(sync.mounted.app.state.geo.auto_locate_once())
+    queue.say(call.call_id, "my neighbor is outside")
+    sync.sync_once()
+    (found,) = sync.mounted.app.state.geo.snapshot()["call_assessments"]
+    point = found["address"]["coordinates"]
+    assert found["address"]["status"] == "LOCATED_UNCONFIRMED"
+    assert (point["lat"], point["source"], point["revision"]) == (34.0525, "automatic_lookup", 2)
+    (request,) = requests  # the new revision kept its point without a second lookup
+    assert dict(request.url.params)["q"] == "123 Main St" and "trapped" not in str(request.url)
+
+
+def test_locator_failures_are_reported_not_hidden(monkeypatch):
+    sync = MapSync(HoldQueue(1800, mode="rules").snapshot)
+
+    async def broken():
+        raise RuntimeError("geocoder adapter broke")
+    monkeypatch.setattr(sync.mounted.app.state.geo, "auto_locate_once", broken)
+    monkeypatch.setattr(mapview, "SYNC_INTERVAL_S", 0.01)
+
+    async def run():
+        locator = asyncio.create_task(sync.locate_forever())
+        await asyncio.sleep(0.1)
+        locator.cancel()
+    asyncio.run(run())
+    sync.sync_once()  # a successful sync does not clear a locator failure
+    assert sync.status["locate_error"] == "RuntimeError: geocoder adapter broke"
 
 
 def test_injected_demo_callers_are_marked_synthetic_on_the_map():

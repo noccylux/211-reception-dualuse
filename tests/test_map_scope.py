@@ -25,8 +25,9 @@ def assessments(sync):
 
 def test_each_profile_names_its_own_recorded_boundary_geocoder_and_feeds():
     la, cn = PROFILES["la-211"].map_area, PROFILES["cn-12345"].map_area
-    assert (la.boundary, la.geocoder, la.feeds) == ("la_county.geojson", "census", ("nws", "usgs"))
-    # Census covers US addresses only and NWS US weather only.
+    # Census matches only a US number, street and city; callers name landmarks and streets, so both lines use
+    # OpenStreetMap. NWS covers US weather only.
+    assert (la.boundary, la.geocoder, la.feeds) == ("la_county.geojson", "nominatim", ("nws", "usgs"))
     assert (cn.boundary, cn.geocoder, cn.feeds) == ("shanghai.geojson", "nominatim", ("usgs",))
     sources = json.loads((DATA / "geo_sources.json").read_text(encoding="utf-8"))
     assert (DATA / la.boundary).is_file()

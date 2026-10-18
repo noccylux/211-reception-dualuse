@@ -30,7 +30,7 @@
 ## Verification
 
 * New tests, all with a mocked Nominatim: 11 in `tests/test_map_autolocate.py` and 2 in `tests/test_mapview.py`. They fail on main (`GeoManager` has no `auto_locate_once`). `tests/test_map_scope.py` now expects Nominatim for `la-211`.
-* Full suite, on the branch fast-forwarded to main `0b17c61`: `bash scripts/uv-run.sh python -m pytest tests -q` in WSL, **483 passed in 83.22 s**.
+* Full suite, on the branch fast-forwarded to main `0b17c61`: `bash scripts/uv-run.sh python -m pytest tests -q` in WSL, **483 passed in 83.22 s**. After rebasing onto main `3179f4c` (records 023 and 025): **493 passed in 84.66 s**.
 * Live check against real Nominatim at about 17:47 PT: a test API on port 8093 ran with a snapshot of the live desk queue (`.tmp/voice-main.sqlite3`). Of 15 calls with a stated place, 8 got a marker: USC four times (including `Gateway apartment near USC, …` and `USC, near the Dorchester building`), Pasadena twice, 450 Maple Ave in Torrance, and `Los Angeles West`.
 * Not located:
   * Several candidates: `12 Oak Street` twice (4 candidates), `Los Angeles West 24th Street` (5) and `洛杉矶 Main Street 125 号` (5).
@@ -40,4 +40,9 @@
   * The review form lists the four Oak Street candidates.
   * The map page logged no console errors, and the desk UI's Incident map page shows the new disclosure with no error.
 * Known wrong match: `Los Angeles West` matched an OpenStreetMap point named "West" on 9th Street in Hollywood. It is drawn as unverified. Chinese place names that OpenStreetMap does not carry, such as `阿尔塔迪纳`, find nothing.
-* Not done: commit, merge into main, and a restart of the live desk on ports 8000 and 8501, which runs from the main checkout.
+* Deployment, Sat 2026-10-17 about 18:00 PT, at the user's request:
+  * Committed as `79f5368`, fast-forwarded `main` and pushed. `origin/main` moved `667f8f2..79f5368`, which also published the unpushed team commits `a909348`, `0b17c61`, `19c7d91` and `3179f4c`.
+  * Restarted API port 8000 and UI port 8501 from the main checkout, each with the old process's working directory, environment and command line. The API kept `DUALUSE_QUEUE_DB=.tmp/voice-main.sqlite3` and `DUALUSE_MAP_URL`; the UI kept `DUALUSE_MAP_URL`. Logs append to `.tmp/public-map-demo/`. This also deployed record 025 (short welcome, fixed intake), which was committed but not yet running.
+  * Local checks: API `/health` returned ok, and the stored desk came back (67 calls, 10 waiting, model mode). The map status showed no sync or locate error, and UI `/_stcore/health` returned ok. Within a minute, 9 of 16 calls with a stated place were located; the new call `南加州大学，西28街` fell back to `南加州大学` and landed on USC.
+  * Public checks, read only: `https://demo.211deskdemo.site/` and `/plugins/map/health` returned 200. The public map state listed 66 calls, 9 located automatically, with the Nominatim geocoder. In a browser, the public map drew the markers and showed the automatic-lookup line on the cards.
+* Not verified: the voice bridge on port 8010 was not restarted. It started at 17:36 PT, so record 023's bridge change needs its restart. No phone call was made after the restart.

@@ -28,3 +28,8 @@
   * The strip read "Calls in progress (11), newest first". The test call came first with its matched place (Olin Hall of Engineering, 3650 McClintock Avenue), then `call-41` at USC.
   * Two live markers carried the ring, and "Show on map" zoomed to them.
 * Observed: 10 of the snapshot's in-progress calls are old test calls still waiting in the queue, such as typed callers who closed the page. The desk cannot tell that they left, so the strip lists them too.
+* Deployment, Sat 2026-10-17 about 18:25 PT, at the user's request:
+  * Committed as `3cc4e0a`, fast-forwarded `main` and pushed (`7a7549f..3cc4e0a`).
+  * No phone call was in progress: the newest call, `call-69`, had completed 9 minutes earlier. API port 8000 was restarted from the main checkout with the old process's working directory, environment and command line. UI 8501 and bridge 8010 were not restarted, as nothing changed for them.
+  * Local checks: API `/health` returned ok, and the desk came back (69 calls, 10 waiting, model mode). The map showed no sync or locate error. Its 10 active calls matched the desk's live calls, and 10 of 17 stated places were located. UI and bridge `/health` returned ok.
+  * Public checks, read only: `/` and `/plugins/map/health` returned 200. The public map page showed "Calls in progress (10), newest first", with `call-41` (USC) first and its ringed marker.

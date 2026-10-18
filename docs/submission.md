@@ -13,7 +13,7 @@ by 20:00 and only improve it after that.
 - [ ] Deck, at most 10 slides ([hackathon.md](hackathon.md#rules)); finalists' deck due Sun 09:00
 - [ ] Poster uploaded with Devpost by Sat 2026-10-17 22:00 PT: [poster.pdf](poster/poster.pdf) is produced (see [Poster](#poster)); check the live form for a poster field
 - [ ] Demo video under 3 minutes that shows our prompts, as the Hub asks of Retell teams; script in [Demo script](#demo-script-3-minutes)
-- [ ] Code: repository link, README quickstart works from a clean checkout. The repository returned 404 to an anonymous request on Sat 2026-10-17 13:15 PT: make it public or share it with the judges
+- [x] Code: public repository <https://github.com/noccylux/211-reception-dualuse> (a filtered mirror of the private repository, published Sat 2026-10-17 19:55 PT; see [change record 028](changes/2026-10-17-028-public-repository-split.md)). README quickstart and the test suite verified from a clean checkout of it
 - [ ] AI tools used, listed below and copied into Devpost
 - [ ] All three twist responses submitted with the final submission; drafts in [problem/twists.md](problem/twists.md)
 - [ ] Sunday demo rehearsed on the demo laptop, with an offline fallback

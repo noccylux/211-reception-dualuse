@@ -186,7 +186,7 @@ disaster assistance line: a 211-type line, not 911.
   callback tasks are plain Python (`dualuse/holdqueue.py`, `dualuse/extract.py`).
   An English keyword mode and a FIFO recording mode are labeled fallbacks.
 - **Interface:** Streamlit (`dualuse/ui.py`): caller view, operator desk,
-  incident reports, scenario simulator.
+  call records, incident reports, scenario simulator.
 - **Voice:** a separate bridge (`dualuse/voice_bridge.py`) serves Retell's
   custom-LLM WebSocket, verifies Retell's signed webhooks and reaches the desk
   only through its REST API, so a phone call is an ordinary desk call marked

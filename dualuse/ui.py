@@ -21,6 +21,14 @@ TEXT_NAMES = {"english": "English translation", "original": "Original text"}
 # Which recorded messages stand in for each true tier of a simulated caller (dualuse.evaluation.PROXY_FOR).
 PROXY_NAMES = {"immediate": "rescue, medical or death subset", "priority": "needs-a-person sample", "normal": "routine sample"}
 TRUE_TIERS = ["immediate", "priority", "normal"]
+# The intake playbook's fixed questions in its order (dualuse/playbooks/intake.md): key, label, wording.
+INTAKE = [("situation", "Situation", "What is happening?"),
+          ("safety", "Safety", "Is anyone hurt, trapped, or in danger right now?"),
+          ("location", "Location", "What is the address, or the nearest cross street or landmark?"),
+          ("people", "People", "How many people are with you or affected?"),
+          ("need", "Need", "What help do you need most right now?"),
+          ("detail", "Medical or mobility", "Does anyone there have medical needs, a disability, or trouble moving?")]
+SAFETY_TEXT = {"danger": "danger reported", "no_immediate_danger": "no immediate danger reported"}
 st.set_page_config(page_title="211 Reception", layout="wide")
 
 
@@ -148,10 +156,47 @@ def literal(text):
     return escaped.replace("\\:", "\\:\u200b")
 
 
+def conversation(dialogue):
+    for turn in dialogue:
+        if turn["speaker"] == "operator":
+            with st.chat_message("operator", avatar=":material/support_agent:"):
+                st.markdown("**Operator:** " + literal(turn["text"]))
+        else:
+            with st.chat_message("user" if turn["speaker"] == "caller" else "assistant"):
+                st.markdown(literal(turn["text"]))
+
+
+def caller_messages(call):
+    return sum(turn["speaker"] == "caller" for turn in call["dialogue"])
+
+
+def intake_answers(extraction):
+    """The extracted answer to each intake question that has a field, None while unanswered. The medical or
+    mobility question has no field, so its answer is only in the conversation."""
+    if not extraction:
+        return dict.fromkeys(("situation", "safety", "location", "people", "need"))
+    x = extraction
+    return {"situation": x["situation"] if x["enough_information"] else None,
+            "safety": SAFETY_TEXT.get("danger" if x["life_threat_now"] else x["safety"]),
+            "location": x["location"], "people": x["people"], "need": x["need"] or None}
+
+
+def answer_changes(record, answers, messages):
+    """After which caller message each answer last changed, as this browser tab saw it. The first look at a
+    call is the baseline, so only changes that happen while someone watches are marked."""
+    seen = st.session_state.setdefault("record_seen", {})
+    if record not in seen:
+        seen[record] = {key: (value, None) for key, value in answers.items()}
+    for key, value in answers.items():
+        if seen[record][key][0] != value:
+            seen[record][key] = (value, messages)
+    return {key: message for key, (_, message) in seen[record].items()}
+
+
 st.title("211 Reception")
 st.caption("Demonstration desk · typed calls, and phone calls through the Retell voice bridge when it runs · "
            "no voice transfer to a person, dispatch, or automatic callback")
-view = st.sidebar.radio("Workspace", ["Caller conversation", "Operator desk", "Incident reports", "Incident map", "Scenario simulator", "About this demo"])
+view = st.sidebar.radio("Workspace", ["Caller conversation", "Operator desk", "Call records", "Incident reports", "Incident map", "Scenario simulator", "About this demo"])
 initial = call_api("GET", "/state")
 with st.sidebar:
     st.caption("Persistent local desk" if initial["persistent"] else "Memory-only desk")
@@ -208,13 +253,7 @@ def caller_panel():
     if call["error"]:
         st.warning("The last message was saved, but automated processing failed. An operator can review it.")
     st.caption(f"Line: {next(p['name'] for p in state['profiles'] if p['key'] == call['profile'])}")
-    for turn in call["dialogue"]:
-        if turn["speaker"] == "operator":
-            with st.chat_message("operator", avatar=":material/support_agent:"):
-                st.markdown("**Operator:** " + literal(turn["text"]))
-        else:
-            with st.chat_message("user" if turn["speaker"] == "caller" else "assistant"):
-                st.markdown(literal(turn["text"]))
+    conversation(call["dialogue"])
     if call["processing"]:
         st.caption("The assistant is processing your message. An operator can still take over.")
     # Keyed: without a key the placeholder change at takeover would remount the input and drop a draft.
@@ -380,6 +419,58 @@ def operator_panel():
 
 
 @st.fragment(run_every="2s")
+def records_panel():
+    state = call_api("GET", "/state")
+    calls = list(reversed(state["calls"]))  # newest first
+    if not calls:
+        st.info("No calls yet. A record appears here as soon as a caller joins.")
+        return
+    st.caption("Every call on the desk, ended calls included. Answers are what the assistant extracted from the "
+               "caller's words; nobody has verified them.")
+    st.dataframe([{"call": c["call_id"], "status": c["status"].replace("_", " "), "tier": f"{TIER_ICON[c['tier']]} {c['tier']}",
+                   "caller messages": caller_messages(c), "time on the line": fmt_wait(c["waited_s"]), "origin": origin_label(c)}
+                  for c in calls], hide_index=True)
+    by_id = {c["call_id"]: c for c in calls}
+    if st.session_state.get("record_call") not in by_id:
+        st.session_state["record_call"] = calls[0]["call_id"]
+    # Labels stay fixed while the status and tier change, as in caller_details.
+    call = by_id[st.selectbox("Call record", list(by_id), key="record_call",
+                              format_func=lambda i: i + (" · 📞 phone" if by_id[i]["origin"] == "phone" else ""))]
+    st.caption(f"{tier_line(call)} · {call['status'].replace('_', ' ')} · on the line {fmt_wait(call['waited_s'])} · "
+               f"origin: {origin_label(call)} · language: {call['language']} · distress: {call['distress']}"
+               + (f" · operator: {call['operator_id']}" if call["operator_id"] else "")
+               + (" · interview running" if call["processing"] else ""))
+    if call["attention"]:
+        st.warning(literal(call["attention"]))
+    if call["error"]:
+        st.warning(literal(call["error"]))
+    answers = intake_answers(call["extraction"])
+    messages = caller_messages(call)
+    changed = answer_changes(f"{call['call_id']}@{call['arrival']}", answers, messages)
+    done = sum(value is not None for value in answers.values())
+    left, right = st.columns([2, 3])
+    with left.container(border=True):
+        st.markdown(f"**Intake checklist** · {done} of {len(answers)} answers extracted")
+        st.progress(done / len(answers))
+        for key, label, question in INTAKE:
+            if key not in answers:
+                st.markdown(f"➖ **{label}** · no extracted field; read the conversation", help=question)
+                continue
+            value = answers[key]
+            new = value is not None and changed[key] == messages
+            st.markdown(("✅" if value is not None else "⏳") + f" **{label}** · "
+                        + (literal(value) if value is not None else "not answered yet")
+                        + (f" :orange-badge[updated by caller message {messages}]" if new else ""), help=question)
+        if call["extraction"]:
+            evidence = "; ".join(f'"{quote}"' for quote in call["extraction"]["evidence"]) or "none"
+            st.caption(literal(f"Caller's words behind the tier: {evidence}"))
+            st.caption(literal("Still unknown, per the assistant: " + (", ".join(call["extraction"]["missing"]) or "nothing flagged")))
+    with right.container(border=True):
+        st.markdown("**Full conversation**")
+        conversation(call["dialogue"])
+
+
+@st.fragment(run_every="2s")
 def incident_panel():
     state = call_api("GET", "/state")
     st.info("Unverified caller reports. Matching kind and stated location suggests a possible shared incident; it does not verify the event or dispatch anyone.")
@@ -397,6 +488,8 @@ if view == "Caller conversation":
     caller_panel()
 elif view == "Operator desk":
     operator_panel()
+elif view == "Call records":
+    records_panel()
 elif view == "Incident reports":
     incident_panel()
 elif view == "Incident map":

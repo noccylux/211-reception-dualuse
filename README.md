@@ -49,7 +49,9 @@ The following is a team-written scenario, not a real call:
 2. Answer the assistant's question with "It is at 12 Oak Street. I am outside."
    Then disclose "Someone on the second floor is shouting for help and cannot
    get out." In the operator desk, pick the call in **Caller details** to see
-   the risk evidence, tier change and report.
+   the risk evidence, tier change and report. In **Call records** (a third tab
+   works well), the intake checklist fills in as the caller answers, and the
+   answers the latest message changed carry an orange mark.
 3. A third caller can report smoke at the same address. **Incident reports**
    associates matching kind and location without downgrading any person's risk.
 4. Reserve the next caller as `operator-1`. **Confirm human takeover**, or mark the
@@ -58,7 +60,8 @@ The following is a team-written scenario, not a real call:
 5. In **Reply to the caller**, type "This is the 211 operator. Is everyone out
    of the building?" Show the reply in the caller tab and answer in **Type a
    message to the operator**. Then select **Operator finished this call** to
-   free the seat. The transcript and summary remain in history. Restart the
+   free the seat. **Call records** keeps the finished call's checklist and full
+   conversation. Restart the
    API to verify persistence.
 6. Under **Demo call events**, send two no-response events, or disconnect a call.
    Review the resulting attention flag or callback task from the operator desk.

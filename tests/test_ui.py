@@ -222,6 +222,60 @@ def test_the_operator_desk_marks_a_phone_call_and_says_voice_is_not_transferred(
     assert len(app.chat_input) == 0  # a phone caller cannot see typed replies
 
 
+def extracted(**fields):
+    base = dict(situation="Caller reports smoke", need="", location=None, life_threat_now=False, needs_person_soon=True,
+                enough_information=True, evidence=["smoke"], missing=["location"], language="English", incident_kind="fire")
+    return lambda _text: Classification(Extraction(**(base | fields)), Tier.PRIORITY, "test")
+
+
+def checklist_row(app, label):
+    return next(element.value for element in app.markdown if f"**{label}**" in element.value)
+
+
+def test_call_records_list_every_call_newest_first_and_keep_an_ended_calls_conversation(desk):
+    queue, _ = desk
+    ended, live = queue.add(), queue.add()
+    queue.say(ended.call_id, "Where can I renew my CalFresh card?")
+    queue.hang_up(ended.call_id)
+    app = run_app()
+    app.sidebar.radio[0].set_value("Call records").run()
+    table = next(frame.value for frame in app.dataframe if "caller messages" in frame.value.columns)
+    assert list(table["call"]) == [live.call_id, ended.call_id]
+    assert list(table["status"]) == ["waiting", "hung up"]
+    assert app.selectbox(key="record_call").value == live.call_id
+    assert any("0 of 5 answers extracted" in element.value for element in app.markdown)
+    app.selectbox(key="record_call").set_value(ended.call_id).run()
+    assert any("hung up" in caption.value for caption in app.caption)
+    assert any("CalFresh" in element.value for element in app.markdown)  # the caller's own words
+    assert any("What is happening?" in element.value for element in app.markdown)  # the desk's welcome
+
+
+def test_the_intake_checklist_fills_in_and_marks_what_the_latest_message_changed(desk):
+    queue, _ = desk
+    call = queue.add()
+    queue.say(call.call_id, "I see smoke", classify=extracted())
+    app = run_app()
+    app.sidebar.radio[0].set_value("Call records").run()
+    assert checklist_row(app, "Situation").startswith("✅") and "Caller reports smoke" in checklist_row(app, "Situation")
+    assert checklist_row(app, "Location").startswith("⏳")
+    assert "updated by" not in checklist_row(app, "Situation")  # what was there on first look is the baseline
+    assert "no extracted field" in checklist_row(app, "Medical or mobility")
+    assert any("1 of 5 answers extracted" in element.value for element in app.markdown)
+
+    queue.say(call.call_id, "Unit #2, 12 Oak Street", classify=extracted(location="Unit #2, 12 Oak Street"))
+    app.run()
+    location = checklist_row(app, "Location")
+    assert location.startswith("✅") and r"Unit \#2" in location  # caller words stay literal
+    assert "updated by caller message 2" in location
+    assert "updated by" not in checklist_row(app, "Situation")
+
+    queue.say(call.call_id, "Two of us", classify=extracted(location="Unit #2, 12 Oak Street", people="2 people"))
+    app.run()
+    assert "updated by caller message 3" in checklist_row(app, "People")
+    assert "updated by" not in checklist_row(app, "Location")
+    assert any("3 of 5 answers extracted" in element.value for element in app.markdown)
+
+
 def replay_table(app):
     return next(frame.value for frame in app.dataframe if "policy" in frame.value.columns)
 

@@ -41,20 +41,25 @@ retain the caller's message for human review. They do not silently switch models
 ## Demonstrate
 
 Use two browser tabs, one on **Caller conversation**, one on **Operator desk**.
+The caller page is a silent text line for callers who cannot speak safely.
 The following is a team-written scenario, not a real call:
 
 1. Join as a routine caller and ask about FEMA assistance. Join another caller
    and say "I see smoke coming from a building."
 2. Answer the assistant's question with "It is at 12 Oak Street. I am outside."
    Then disclose "Someone on the second floor is shouting for help and cannot
-   get out." See the risk evidence, tier change and report in the operator desk.
+   get out." In the operator desk, pick the call in **Caller details** to see
+   the risk evidence, tier change and report.
 3. A third caller can report smoke at the same address. **Incident reports**
    associates matching kind and location without downgrading any person's risk.
-4. Reserve the next caller as `operator-1`. Confirm human takeover, or mark the
+4. Reserve the next caller as `operator-1`. **Confirm human takeover**, or mark the
    transfer failed to return the call with its original arrival time. Reserving
    works during a model request; late replies cannot change a transferred call.
-5. Complete the operator-held call to free the seat. The transcript and summary
-   remain in history. Restart the API to verify persistence.
+5. In **Reply to the caller**, type "This is the 211 operator. Is everyone out
+   of the building?" Show the reply in the caller tab and answer in **Type a
+   message to the operator**. Then select **Operator finished this call** to
+   free the seat. The transcript and summary remain in history. Restart the
+   API to verify persistence.
 6. Under **Demo call events**, send two no-response events, or disconnect a call.
    Review the resulting attention flag or callback task from the operator desk.
    These buttons simulate connection events; no silence detector or dialer exists.

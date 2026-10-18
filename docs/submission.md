@@ -24,8 +24,8 @@ Required by the rules. Add each tool when it is first used.
 
 | Tool | Used for |
 |---|---|
-| Claude Code | Coding assistant for the repository: code review, the playbook agent, line profiles, surge injector, the recorded-message evaluation, tests and docs |
-| OpenAI Codex | Dataset acquisition and integrity checks, the multi-turn reception implementation, tests, repository documentation, Twist 2/3 response drafts and staging branch integration |
+| Claude Code | Coding assistant for the repository: code review, the playbook agent, line profiles, surge injector, the recorded-message evaluation, operator text replies and the compact operator queue, tests and docs |
+| OpenAI Codex | Dataset acquisition and integrity checks, the multi-turn reception implementation, tests, repository documentation, Twist 2/3 response drafts, staging branch integration, and the Devpost text update and code review for the mentor-feedback changes |
 | ChatGPT (6 Pro) | Idea evaluation, competitor and dataset research before the build |
 | Claude API (Anthropic SDK, `claude-haiku-5-5`; evaluation comparison with `claude-sonnet-5-5`) | The reception agent's replies in the caller's language from playbooks, and structured caller-field extraction; code controls tier rules, emergency referrals and handoff. The same calls ran on recorded disaster messages for the evaluation ([evaluation.md](evaluation.md)) |
 | Retell AI | Phone numbers, speech-to-text and text-to-speech for voice callers; the desk's own logic produces every reply (branch `voice-retell-bridge`) |
@@ -129,9 +129,10 @@ give the supervisor and the next operator an honest picture.
 disaster assistance line: a 211-type line, not 911.
 
 - **Every waiting caller gets a conversation.** Callers join by typed chat or,
-  through our Retell voice bridge, by an English phone call. The desk greets
-  them, says how many callers were already waiting, and tells them to call the
-  emergency number if anyone is in danger right now.
+  through our Retell voice bridge, by an English phone call. The caller page
+  is a silent browser text line for callers who cannot speak safely, not SMS.
+  The desk greets them, says how many callers were already waiting, and tells
+  them to call the emergency number if anyone is in danger right now.
 - **Claude talks with them in their language.** The agent follows editable
   playbooks: acknowledge, calm, ask one question at a time, and never promise
   help, a callback or a place in line. In our demo it answers in English,
@@ -145,17 +146,19 @@ disaster assistance line: a 211-type line, not 911.
   Priority, never as routine), Normal (routine; moves up after 30 minutes).
   First come, first served within a tier. When a call turns Immediate, the
   desk itself tells the caller the emergency number.
-- **The supervisor sees the whole floor.** The operator desk shows the queue
-  in tiered and arrival order, review flags such as a caller who stopped
-  responding, callback review tasks for callers who dropped (nothing is
-  dialed), and reports at the same stated place grouped as a possible shared
-  incident: unverified, and never lowering anyone's priority.
+- **The supervisor sees the whole floor.** One compact queue table shows
+  tiered and arrival order, with one detail panel for the selected caller.
+  The desk shows review flags, callback review tasks for dropped callers
+  (nothing is dialed), and possible shared incidents at the same stated place:
+  unverified, and never lowering anyone's priority.
 - **A person takes over with context.** An operator reserves the next caller
   and gets a summary: tier, situation, need, location, the quotes behind the
   tier and what is still unknown. Only the operator's confirmation completes
   the handoff; a failed transfer returns the caller with the original arrival
-  time. A phone caller hears a fixed handoff notice that ends the demo; voice
-  transfer to a person is not connected yet.
+  time. On a typed call, the operator and caller then exchange text messages
+  in the desk. A phone caller still hears only a fixed handoff notice, with
+  no operator text; voice transfer is not connected
+  ([change 022](changes/2026-10-17-022-operator-replies-and-queue-view.md)).
 - **It can be shown under load.** A labeled surge injector adds team-written
   callers (simulated) and real messages from past disasters (Munro disaster
   response messages: Haiti 2010, Pakistan floods 2010, Sandy 2012) on a
@@ -251,8 +254,24 @@ disaster assistance line: a 211-type line, not 911.
 
 ### What's next
 
+Planned work, including the remaining [mentor suggestions](mentor-advice.md);
+these additions are not built.
+
 - Extend the completed first-turn recorded-message evaluation to whole conversations and consented 211 data before claiming operational accuracy or wait-time benefits.
-- Voice transfer to a person and consented callbacks through Retell.
+- Voice transfer to a person and consented callbacks through Retell; a real
+  phone number with in-call SMS for text and addresses.
+- Operator-confirmed consolidation of reports about the same incident into
+  one operator conversation, keeping each caller's needs.
+- Dedicated incident kinds for demo scenarios, such as earthquake and flood,
+  independent of urgency.
+- One narrowly defined routine request the assistant can complete after the
+  caller confirms, with an audit record.
+- Distinguish background speech from the caller's own report, validated at
+  the voice layer.
+- Consented location sharing from the caller's device, kept distinct from
+  the stated address.
+- An operator-review flag for suspected prank or abuse calls that never
+  silently discards a possible emergency.
 - Spanish and Mandarin phone calls, once tested with a matching voice and
   recognizer.
 - The installation line profile, a pilot with a 211 agency, and a local
@@ -282,8 +301,9 @@ Copy the [AI tools used](#ai-tools-used) table.
 
 Follows [README steps 1 to 9](../README.md#demonstrate); the Hub limits the
 video to 3 minutes and asks teams that used Retell to show their prompts.
-Rehearsed on Sat 2026-10-17 12:57 to 13:10 PT on a separate desk; observed
-reply time was a few seconds per caller turn.
+The original script was rehearsed on Sat 2026-10-17 12:57 to 13:10 PT on a
+separate desk; observed reply time was a few seconds per caller turn. That
+rehearsal predates the operator text exchange below.
 
 Before recording: model mode, line profile Los Angeles 211, an empty desk
 (sidebar, **Reset local demo**), the caller view in one tab and the operator
@@ -293,9 +313,9 @@ desk in another, messages ready to paste. Trim model waits in editing.
 |---|---|---|
 | 0:00 | Poster headline, then the caller tab | "On 8 January 2025, 211 LA was offered 7,815 contacts; 60.66% were abandoned and the average wait was 1 h 23 min. 211 Reception turns that hold time into context for the next operator." |
 | 0:15 | Steps 1–2: join, ask about FEMA assistance. Join again: "I see smoke coming from a building." Then "It is at 12 Oak Street. I am outside." and "Someone on the second floor is shouting for help and cannot get out." | "Claude talks with every waiting caller. When there is danger, the desk itself says call 911, and code, not the model, moves the call up." |
-| 0:45 | Operator tab: the queue (tiered against FIFO position), open the smoke call: evidence quotes, still unknown | "The operator sees why: the caller's own words." |
+| 0:45 | Operator tab: the queue (queue position against FIFO position), pick the smoke call in **Caller details**: evidence quotes, still unknown | "The operator sees why: the caller's own words." |
 | 0:55 | Step 3: a third caller reports smoke at 12 Oak Street; open **Incident reports** | "Two reports at one address become a possible shared incident. Unverified, and nobody's priority drops." |
-| 1:10 | Steps 4–5: reserve as `operator-1`, show the summary, **Confirm human takeover**, then **Operator finished this call** | "Only a person completes the transfer; a failed one keeps the caller's place in line. Everything is saved." |
+| 1:10 | Steps 4–5: reserve as `operator-1`, show the summary, **Confirm human takeover**. In **Reply to the caller**, type "This is the 211 operator. Is everyone out of the building?" Show it in the caller tab; the caller answers in **Type a message to the operator**. Then **Operator finished this call**. | "A person takes over in the same conversation." |
 | 1:30 | Step 6: **Demo call events**, **No response event** twice (the panel closes after a click; reopen it), then the review flag on the operator desk | "Quiet callers get one check-in, then a person looks. Dropped callers become callback reviews; nothing is dialed." |
 | 1:45 | Step 7: join and write "Mi mamá necesita oxígeno y se fue la luz hace dos horas." | "Callers are answered in their own language." |
 | 2:00 | Step 8: switch **Line profile** to 12345, join, write "我家楼下被水淹了，我奶奶腿脚不方便，出不去，水还在涨", then switch back to Los Angeles | "Twist 2: the same code on China's 12345 hotline. Only what is local changes: Mandarin, 110, 119, 120, Chinese address order." |
@@ -304,6 +324,8 @@ desk in another, messages ready to paste. Trim model waits in editing.
 
 Notes:
 
+- In the live demo, one person plays the caller and another the operator,
+  on two devices or two tabs (mentor point 9).
 - Step 9 takes about 60 to 90 s and about 30 model calls; record it apart or
   speed it up. Switch the profile back to Los Angeles first: new callers,
   surge callers included, take the profile that is active when they join.
@@ -319,7 +341,7 @@ Notes:
 | Criterion | Our evidence |
 |---|---|
 | Dual-use fit (tie-breaker) | One build for an ordinary 211 day and a fire or flood surge ([architecture](architecture.md#dual-use-story)); the China 12345 profile; an installation line planned for the defense end user |
-| Technical execution | Claude turns with code-checked evidence, deterministic tiers and two-phase handoff, SQLite persistence across restarts, Retell bridge with signed webhooks, labeled live surge; 205 tests pass on this branch (Sat 2026-10-17) |
+| Technical execution | Claude turns with code-checked evidence, deterministic tiers and two-phase handoff, SQLite persistence across restarts, Retell bridge with signed webhooks, labeled live surge; 470 tests pass on branch `mentor-quick-wins` (Sat 2026-10-17 17:25 PT) |
 | Feasibility and impact | 211 LA's January 2025 figures show the surge; runs on one laptop; labeled fallbacks when the model is down; DHS S&T SBIR path; no accuracy or wait-time claims until measured |
 | Adapting to twists | Twist 1 submitted; Twist 2 built as a line profile with checked facts; Twist 3 poster produced ([twists.md](problem/twists.md)) |
-| Demo and pitch | Nine-step demo path, live surge, English phone calls through Retell, poster, 3-minute script above |
+| Demo and pitch | Nine-step demo path with a two-person caller and operator text exchange, live surge, English phone calls through Retell, poster, 3-minute script above |

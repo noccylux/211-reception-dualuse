@@ -7,7 +7,9 @@ from fastapi.testclient import TestClient
 from streamlit.testing.v1 import AppTest
 
 from dualuse import api
-from dualuse.holdqueue import HoldQueue
+from dualuse.extract import Classification, Extraction
+from dualuse.holdqueue import Conflict, HoldQueue
+from dualuse.triage import Tier
 
 
 class Clock:
@@ -33,26 +35,97 @@ def desk(monkeypatch):
     return queue, clock
 
 
-def test_waiting_call_details_keep_their_label_while_the_wait_grows(desk):
-    queue, clock = desk
-    call = queue.add()
-    app = AppTest.from_file(str(Path(__file__).parents[1] / "dualuse" / "ui.py"), default_timeout=30)
-    app.run()
-    app.sidebar.radio[0].set_value("Operator desk").run()
-
-    def label():
-        return next(expander.label for expander in app.expander if call.call_id in expander.label)
-
-    first = label()
-    clock.now += 7
-    app.run()
-    assert label() == first
-
-
 def run_app():
     app = AppTest.from_file(str(Path(__file__).parents[1] / "dualuse" / "ui.py"), default_timeout=30)
     app.run()
     return app
+
+
+def fire_report(_text):
+    x = Extraction(situation="Caller reports smoke", need="report smoke", location="12 Oak Street",
+                   life_threat_now=False, needs_person_soon=True, enough_information=True, evidence=["smoke"],
+                   missing=[], language="English", incident_kind="fire", report_only=True)
+    return Classification(x, Tier.PRIORITY, "test")
+
+
+def test_the_chosen_caller_stays_selected_while_the_wait_grows_and_the_queue_reorders(desk):
+    queue, clock = desk
+    first, second = queue.add(), queue.add()
+    app = run_app()
+    app.sidebar.radio[0].set_value("Operator desk").run()
+    assert app.selectbox(key="detail_call").value == first.call_id  # the head of the queue by default
+    labels = set(app.selectbox(key="detail_call").options)
+    clock.now += 7
+    queue.say(second.call_id, "My neighbor collapsed and he is not breathing")  # moves ahead and changes its tier
+    app.run()
+    assert app.selectbox(key="detail_call").value == first.call_id
+    # A browser sends back the label it was shown, so a label that changed with the tier would lose the choice.
+    assert set(app.selectbox(key="detail_call").options) == labels
+    app.selectbox(key="detail_call").set_value(second.call_id).run()
+    clock.now += 7
+    app.run()
+    assert app.selectbox(key="detail_call").value == second.call_id
+
+
+def test_the_queue_is_one_compact_table_with_details_for_the_chosen_caller(desk):
+    queue, _ = desk
+    first, second, third = queue.add(), queue.add(), queue.add()
+    queue.say(first.call_id, "Where can I renew my CalFresh card?")
+    for call in (second, third):
+        queue.say(call.call_id, "I see smoke at 12 Oak Street", classify=fire_report)
+    app = run_app()
+    app.sidebar.radio[0].set_value("Operator desk").run()
+    table = next(frame.value for frame in app.dataframe if "queue position" in frame.value.columns)
+    assert list(table.columns) == ["queue position", "call", "tier", "wait", "FIFO position", "language", "review",
+                                   "shadow score (advisory)", "origin"]
+    assert not [expander for expander in app.expander if first.call_id in expander.label]  # no panel per caller
+    app.selectbox(key="detail_call").set_value(first.call_id).run()
+    conversation = " ".join(element.value for element in app.markdown)
+    assert "CalFresh" in conversation and "Oak" not in conversation
+    assert not any("Possible shared incident" in info.value for info in app.info)
+    app.selectbox(key="detail_call").set_value(second.call_id).run()
+    assert any("Possible shared incident" in info.value and "2 reports of fire" in info.value for info in app.info)
+
+
+def test_the_caller_page_offers_a_silent_text_line(desk):
+    app = run_app()
+    assert any("plays no sound" in info.value for info in app.info)
+
+
+def test_the_operator_and_a_typed_caller_exchange_messages_after_takeover(desk):
+    queue, _ = desk
+    call = queue.add()
+    queue.say(call.call_id, "Where can I renew my CalFresh card?")
+    queue.confirm(queue.claim("operator-1").transfer_id, True)
+    app = run_app()
+    app.sidebar.radio[0].set_value("Operator desk").run()
+    app.chat_input(key=f"reply-{call.call_id}").set_value("This is the 211 operator. How can I help?").run()
+    assert {k: call.dialogue[-1][k] for k in ("speaker", "text")} == {
+        "speaker": "operator", "text": "This is the 211 operator. How can I help?"}
+    app.sidebar.radio[0].set_value("Caller conversation").run()
+    assert any("**Operator:**" in element.value and "This is the 211 operator" in element.value for element in app.markdown)
+    assert any("An operator has taken over" in info.value for info in app.info)
+    # One key per call, so a draft survives the placeholder change when an operator takes over.
+    app.chat_input(key=f"caller-input-{call.call_id}").set_value("Which office is open today?").run()
+    assert {k: call.dialogue[-1][k] for k in ("speaker", "text")} == {"speaker": "caller", "text": "Which office is open today?"}
+
+
+def test_a_reply_refused_after_the_card_closed_still_shows_its_error(desk, monkeypatch):
+    queue, _ = desk
+    call = queue.add()
+    queue.confirm(queue.claim("operator-1").transfer_id, True)
+    app = run_app()
+    app.sidebar.radio[0].set_value("Operator desk").run()
+
+    def completed_in_another_tab(call_id, operator_id, text):
+        queue.finish(call_id)
+        raise Conflict("Only the operator who took over this call can reply")
+
+    monkeypatch.setattr(queue, "operator_say", completed_in_another_tab)
+    app.chat_input(key=f"reply-{call.call_id}").set_value("Are you safe?").run()
+    app.run()  # AppTest cannot rerun a fragment alone; the browser shows this state on its next refresh
+    assert not app.chat_input  # the card closed with the call
+    assert any("not sent" in error.value and "409" in error.value for error in app.error)
 
 
 def test_the_sidebar_switches_the_line_profile(desk):
@@ -137,12 +210,16 @@ def test_the_operator_desk_marks_a_phone_call_and_says_voice_is_not_transferred(
     phone, typed = queue.add(origin="phone"), queue.add()
     app = run_app()
     app.sidebar.radio[0].set_value("Operator desk").run()
-    labels = {expander.label for expander in app.expander}
+    labels = app.selectbox(key="detail_call").options
     assert any(phone.call_id in label and "📞 phone" in label for label in labels)
     assert any(typed.call_id in label and "phone" not in label for label in labels)
-    queue.claim("operator-1")
+    token = queue.claim("operator-1").transfer_id
     app.run()
     assert any("Voice transfer is not connected" in info.value for info in app.info)
+    queue.confirm(token, True)
+    app.run()
+    assert any("Voice transfer is not connected" in info.value for info in app.info)
+    assert len(app.chat_input) == 0  # a phone caller cannot see typed replies
 
 
 def replay_table(app):

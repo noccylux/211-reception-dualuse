@@ -29,6 +29,7 @@ INVARIANTS = [
     "Immediate danger stays flagged until human review; every change has an audit event.",
     "An operator can reserve a call while the model is still replying.",
     "Only a confirmed handoff completes transfer; a failure preserves the original arrival time.",
+    "After a confirmed takeover of a typed call, only the operator replies, as text in the caller's conversation.",
     "Reports are unverified; a shared location is not proof of a shared incident or dispatch.",
     "Normal callers gain scheduling priority after 30 minutes; this is not a maximum wait guarantee.",
     "Phone callers reach the desk only through the Retell voice bridge when it runs. "
@@ -131,6 +132,10 @@ class ProfileChange(BaseModel):
 
 class Operator(BaseModel):
     operator_id: str = Field(default="operator-1", min_length=1, max_length=80, pattern=r"^[\w-]+$")
+
+
+class OperatorMessage(Utterance):
+    operator_id: str = Field(min_length=1, max_length=80, pattern=r"^[\w-]+$")
 
 
 class Confirmation(BaseModel):
@@ -260,6 +265,12 @@ def confirm(transfer_id: str, body: Confirmation) -> dict:
 def complete(call_id: str) -> dict:
     require_call(call_id)
     return one_call(QUEUE.finish(call_id))
+
+
+@app.post("/calls/{call_id}/operator-message")
+def operator_message(call_id: str, body: OperatorMessage) -> dict:
+    require_call(call_id)
+    return one_call(QUEUE.operator_say(call_id, body.operator_id, body.text))
 
 
 @app.post("/calls/{call_id}/callback-review")

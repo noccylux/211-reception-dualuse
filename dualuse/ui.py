@@ -119,7 +119,6 @@ def origin_label(call):
 
 
 def tier_line(call):
-    # No ticking wait time here: Streamlit collapses an expander whenever its label changes.
     phone = " · 📞 phone" if call["origin"] == "phone" else ""
     return f"{TIER_ICON[call['tier']]} {call['call_id']} · {call['tier']}{phone}"
 
@@ -133,6 +132,13 @@ def scorer_cell(opinion):
     if opinion["score"] is None:
         return opinion["note"]
     return f"{opinion['score']} · {opinion['band']}" + (" · ⚠ tier and scorer disagree — operator check" if opinion["disagree"] else "")
+
+
+def scorer_number(opinion):
+    """The shadow score alone for the queue table; the caller details explain it."""
+    if not opinion or not opinion["supported"] or opinion["score"] is None:
+        return "—"
+    return f"{opinion['score']}" + (" ⚠" if opinion["disagree"] else "")
 
 
 def literal(text):
@@ -177,6 +183,7 @@ with st.sidebar:
 @st.fragment(run_every="2s")
 def caller_panel():
     state = call_api("GET", "/state")
+    st.info("**Text line.** Type instead of talking: this page plays no sound, so you can use it when speaking is unsafe.")
     if st.button("Join as a new caller", type="primary"):
         row = call_api("POST", "/calls", json={})
         st.session_state["selected_call"] = row["call_id"]
@@ -192,18 +199,28 @@ def caller_panel():
     if call["status"] == "waiting":
         position = call["fifo_position"] if state["active_policy"] == "fifo" else call["tiered_position"]
         st.info(f"Waiting · currently {position} callers ahead · {fmt_wait(call['waited_s'])}. Order may change with urgency.")
+    elif call["status"] == "connecting":
+        st.info("An operator is joining. You can keep typing; your messages are saved for them.")
+    elif call["status"] == "handed_off" and call["origin"] != "phone":
+        st.info("An operator has taken over. Their replies appear below; type here to answer.")
     else:
         st.info("Call status: " + call["status"].replace("_", " "))
     if call["error"]:
         st.warning("The last message was saved, but automated processing failed. An operator can review it.")
     st.caption(f"Line: {next(p['name'] for p in state['profiles'] if p['key'] == call['profile'])}")
     for turn in call["dialogue"]:
-        with st.chat_message("user" if turn["speaker"] == "caller" else "assistant"):
-            st.markdown(literal(turn["text"]))
+        if turn["speaker"] == "operator":
+            with st.chat_message("operator", avatar=":material/support_agent:"):
+                st.markdown("**Operator:** " + literal(turn["text"]))
+        else:
+            with st.chat_message("user" if turn["speaker"] == "caller" else "assistant"):
+                st.markdown(literal(turn["text"]))
     if call["processing"]:
         st.caption("The assistant is processing your message. An operator can still take over.")
-    text = st.chat_input("Tell the assistant what is happening", max_chars=4000,
-                         disabled=call["status"] != "waiting" or call["processing"])
+    # Keyed: without a key the placeholder change at takeover would remount the input and drop a draft.
+    text = st.chat_input("Tell the assistant what is happening" if call["status"] == "waiting" else "Type a message to the operator",
+                         key=f"caller-input-{call_id}", max_chars=4000,
+                         disabled=call["status"] not in ("waiting", "connecting", "handed_off") or call["processing"])
     if text:
         try:
             api("POST", f"/calls/{call_id}/say", json={"text": text})
@@ -227,6 +244,37 @@ def caller_panel():
             call_api("POST", f"/calls/{call_id}/hangup")
             st.rerun(scope="fragment")
         st.caption("Team-written scenario: 'I see smoke' → 'at 12 Oak Street' → 'someone is shouting for help inside'.")
+
+
+def caller_details(state, opinions, rule):
+    """One details panel for the waiting caller picked in the selector, instead of one panel per caller."""
+    waiting = {c["call_id"]: c for c in state["waiting"]}
+    if st.session_state.get("detail_call") not in waiting:
+        st.session_state["detail_call"] = next(iter(waiting))  # the head of the queue
+    # Labels must not change while a call waits: the browser sends back the label it showed, and a
+    # label that changed with the tier would no longer match, dropping the operator's choice.
+    call = waiting[st.selectbox("Caller details", list(waiting), key="detail_call",
+                                format_func=lambda i: i + (" · 📞 phone" if waiting[i]["origin"] == "phone" else ""))]
+    opinion = opinions.get(call["call_id"])
+    with st.container(border=True):
+        st.caption(f"{tier_line(call)} · waiting {fmt_wait(call['waited_s'])} · origin: {origin_label(call)} · source: {call['source']} · "
+                   f"interview {'running' if call['processing'] else 'idle'} · "
+                   f"language: {call['language']} · distress: {call['distress']}")
+        if call["attention"]:
+            st.warning(literal(call["attention"]))
+        st.text(call["summary"])
+        shared = next((c for c in state["clusters"] if call["call_id"] in c["call_ids"] and c["count"] > 1), None)
+        if shared:
+            st.info(literal(f"Possible shared incident, unverified: {shared['count']} reports of {shared['kind']} at "
+                            f"{shared['location']} ({', '.join(shared['call_ids'])})"))
+        st.caption(f"Shadow scorer (display only): {scorer_cell(opinion)}"
+                   + (f" · open needs: {', '.join(opinion['needs'])}" if opinion and opinion["needs"] else "")
+                   + ". The CrisisFusion Human Attention Index (classmate's English/Spanish rules) reads only the "
+                   "caller's words. It never changes a tier or the queue order. " + rule)
+        with st.expander("Extracted fields"):
+            st.write(call["extraction"] or "No extraction yet")
+        for turn in call["dialogue"]:
+            st.markdown(literal(f"{turn['speaker']}: {turn['text']}"))
 
 
 @st.fragment(run_every="2s")
@@ -258,8 +306,12 @@ def operator_panel():
     operator = st.selectbox("Operator seat", ["operator-1", "operator-2", "operator-3"])
     busy = any(c["operator_id"] == operator and c["status"] in ("connecting", "handed_off") for c in state["calls"])
     if st.button("Available: reserve next caller", type="primary", disabled=busy or not state["waiting"]):
+        st.session_state.pop("reply_error", None)
         call_api("POST", "/operator/free", json={"operator_id": operator})
         st.rerun(scope="fragment")
+    if "reply_error" in st.session_state:
+        # Outside the call card, which closes if the call ended meanwhile; the next reply or reservation clears it.
+        st.error(literal(st.session_state["reply_error"]))
     for call in state["calls"]:
         if call["operator_id"] == operator and call["status"] in ("connecting", "handed_off"):
             with st.container(border=True):
@@ -279,38 +331,36 @@ def operator_panel():
                     if cols[1].button("Transfer failed: return to queue", key=f"fail-{call['transfer_id']}"):
                         call_api("POST", f"/handoffs/{call['transfer_id']}/confirm", json={"success": False})
                         st.rerun(scope="fragment")
-                elif st.button("Operator finished this call", key=f"done-{call['call_id']}"):
-                    call_api("POST", f"/calls/{call['call_id']}/complete")
-                    st.rerun(scope="fragment")
+                else:
+                    if call["origin"] != "phone":
+                        st.caption("Latest messages" if call["origin"] == "live" else
+                                   "Latest messages · simulated or replayed caller: replies are saved, but nobody reads them")
+                        for turn in call["dialogue"][-6:]:
+                            st.markdown(literal(f"{turn['speaker']}: {turn['text']}"))
+                        reply = st.chat_input("Reply to the caller", key=f"reply-{call['call_id']}", max_chars=4000)
+                        if reply:
+                            try:
+                                api("POST", f"/calls/{call['call_id']}/operator-message",
+                                    json={"operator_id": operator, "text": reply})
+                                st.session_state.pop("reply_error", None)
+                            except ApiError as error:
+                                st.session_state["reply_error"] = f"Reply to {call['call_id']} not sent: {error}"
+                            st.rerun(scope="fragment")
+                    if st.button("Operator finished this call", key=f"done-{call['call_id']}"):
+                        call_api("POST", f"/calls/{call['call_id']}/complete")
+                        st.rerun(scope="fragment")
     st.subheader("Waiting queue")
     scorer = state["scorer"]
     opinions = scorer["opinions"]
     if scorer["error"]:
         st.error(literal(f"Shadow scorer stopped updating: {scorer['error']}"))
     if state["waiting"]:
-        st.dataframe([{"call": c["call_id"], "tier": c["tier"],
-                       "shadow scorer (display only)": scorer_cell(opinions.get(c["call_id"])),
-                       "open needs (scorer)": ", ".join((opinions.get(c["call_id"]) or {}).get("needs", [])),
-                       "wait": fmt_wait(c["waited_s"]),
-                       "FIFO position": c["fifo_position"] + 1, "tiered position": c["tiered_position"] + 1,
-                       "language": c["language"], "processing": c["processing"], "review": c["attention"],
-                       "origin": origin_label(c)} for c in state["waiting"]], hide_index=True)
-        st.caption("Shadow scorer: the CrisisFusion Human Attention Index (classmate's English/Spanish rules) reads only "
-                   "the caller's words. It never changes a tier or the queue order. " + scorer["rule"])
-    for call in state["waiting"]:
-        opinion = opinions.get(call["call_id"])
-        with st.expander(tier_line(call)):
-            st.caption(f"Waiting {fmt_wait(call['waited_s'])} · origin: {origin_label(call)} · source: {call['source']} · "
-                       f"interview {'running' if call['processing'] else 'idle'} · "
-                       f"language: {call['language']} · distress: {call['distress']}")
-            st.caption(f"Shadow scorer (display only): {scorer_cell(opinion)}"
-                       + (f" · open needs: {', '.join(opinion['needs'])}" if opinion and opinion["needs"] else ""))
-            if call["attention"]:
-                st.warning(literal(call["attention"]))
-            st.text(call["summary"])
-            st.write(call["extraction"] or "No extraction yet")
-            for turn in call["dialogue"]:
-                st.markdown(literal(f"{turn['speaker']}: {turn['text']}"))
+        st.dataframe([{"queue position": i + 1, "call": c["call_id"], "tier": f"{TIER_ICON[c['tier']]} {c['tier']}",
+                       "wait": fmt_wait(c["waited_s"]), "FIFO position": c["fifo_position"] + 1,
+                       "language": c["language"], "review": "⚑" if c["attention"] else "",
+                       "shadow score (advisory)": scorer_number(opinions.get(c["call_id"])), "origin": origin_label(c)}
+                      for i, c in enumerate(state["waiting"])], hide_index=True)
+        caller_details(state, opinions, scorer["rule"])
     tasks = [c for c in state["calls"] if c["callback_status"] == "pending_review"]
     if tasks:
         st.subheader("Callback review · no automatic dialing")

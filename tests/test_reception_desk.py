@@ -639,3 +639,36 @@ def test_operator_takeover_records_without_running_model_and_survives_restart(tm
         q.finish(call.call_id)
         with pytest.raises(Conflict):
             q.say(call.call_id, "after completion")
+
+
+def test_only_the_operator_holding_a_typed_call_can_reply_and_the_reply_is_saved(tmp_path):
+    path = tmp_path / "reply.sqlite3"
+    q = HoldQueue(1800, mode="rules", db_path=path)
+    call = q.add()
+    q.say(call.call_id, "Where can I renew my CalFresh card?")
+    token = q.claim("alice").transfer_id
+    with pytest.raises(Conflict):
+        q.operator_say(call.call_id, "alice", "Hello")  # reserved, not yet taken over
+    q.confirm(token, True)
+    with pytest.raises(Conflict):
+        q.operator_say(call.call_id, "bob", "Hello")
+    with pytest.raises(ValueError):
+        q.operator_say(call.call_id, "alice", "   ")
+    q.operator_say(call.call_id, "alice", "  This is the 211 operator. How can I help?  ")
+    assert call.dialogue[-1]["speaker"] == "operator"
+    assert call.dialogue[-1]["text"] == "This is the 211 operator. How can I help?"
+    assert call.transcript == ["Where can I renew my CalFresh card?"]  # caller words only, as the scorers read them
+    assert q.events[-1]["event"] == "operator_message"
+    assert HoldQueue(1800, db_path=path).call(call.call_id).dialogue[-1]["speaker"] == "operator"
+    q.finish(call.call_id)
+    with pytest.raises(Conflict):
+        q.operator_say(call.call_id, "alice", "Are you still there?")
+
+
+def test_a_phone_caller_cannot_receive_typed_operator_replies():
+    q = HoldQueue(1800, mode="rules")
+    call = q.add(origin="phone")
+    q.confirm(q.claim("alice").transfer_id, True)
+    with pytest.raises(Conflict, match="voice transfer"):
+        q.operator_say(call.call_id, "alice", "Hello")
+    assert all(t["speaker"] != "operator" for t in call.dialogue)

@@ -61,6 +61,20 @@ def test_operator_free_reserves_then_confirms_the_head_with_a_summary(client):
     assert len(state["waiting"]) == 1 and state["handoffs"][0]["call_id"] == urgent["call_id"]
 
 
+def test_the_operator_holding_a_typed_call_replies_through_the_desk(client):
+    call = client.post("/calls", json={"text": "is the 210 freeway open towards Pasadena"}).json()
+    handoff = client.post("/operator/free", json={"operator_id": "operator-2"}).json()["handoff"]
+    path = f"/calls/{call['call_id']}/operator-message"
+    assert client.post(path, json={"operator_id": "operator-2", "text": "Hello"}).status_code == 409  # not yet taken over
+    client.post(f"/handoffs/{handoff['transfer_id']}/confirm", json={"success": True})
+    assert client.post(path, json={"operator_id": "operator-1", "text": "Hello"}).status_code == 409
+    assert client.post(path, json={"operator_id": "operator-2", "text": "   "}).status_code == 422
+    replied = client.post(path, json={"operator_id": "operator-2", "text": "This is the 211 operator."})
+    assert replied.status_code == 200
+    assert {k: replied.json()["dialogue"][-1][k] for k in ("speaker", "text")} == {"speaker": "operator", "text": "This is the 211 operator."}
+    assert client.post("/calls/no-such-call/operator-message", json={"operator_id": "operator-2", "text": "Hi"}).status_code == 404
+
+
 def test_operator_free_with_an_empty_queue_hands_off_nobody(client):
     assert client.post("/operator/free").json() == {"handoff": None}
 

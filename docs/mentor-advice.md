@@ -8,6 +8,15 @@ suggestions as implementation decisions or claim that they are built.
 The addendum below records the later hand-drawn notes and discussion about
 native phone calls, text and location. Its options remain undecided.
 
+**Follow-up status, Sat 2026-10-17 evening:** the "Current main" paragraphs
+below still describe commit `7c3daf1`. Change
+[022](changes/2026-10-17-022-operator-replies-and-queue-view.md) then added
+operator text replies to typed callers (point 9), one compact queue with one
+details panel (point 8) and a visible note that the caller page is a silent
+text line (point 5). Voice transfer, SMS and a silent phone flow are still not
+built. The other points are next steps in the Devpost text
+([submission.md](submission.md#whats-next)).
+
 The mentor's overall direction is to reduce repetitive operator work, make
 intake more reliable, and demonstrate a clearer interaction between caller
 and operator. The current build already supports interviewing, prioritization,

@@ -407,6 +407,22 @@ class HoldQueue:
             self._save()
             return call
 
+    def operator_say(self, call_id: str, operator_id: str, text: str) -> HeldCall:
+        """A typed reply from the operator holding the call, shown to the caller as written; nothing classifies it."""
+        text = text.strip()
+        if not text or len(text) > 4000:
+            raise ValueError("message must contain 1 to 4000 characters")
+        with self._lock:
+            call = self._calls[call_id]
+            if call.status != "handed_off" or call.operator_id != operator_id:
+                raise Conflict("Only the operator who took over this call can reply")
+            if call.origin == "phone":
+                raise Conflict("A phone caller cannot see typed replies; voice transfer is not connected")
+            call.dialogue.append({"speaker": "operator", "text": text, "at": self.now(), "operator_id": operator_id})
+            self._log(call, "operator_message", operator_id)
+            self._save()
+            return call
+
     def operator_free(self) -> Handoff | None:
         """In-process simulation helper; HTTP clients must reserve then confirm."""
         call = self.claim(f"simulation-{uuid.uuid4().hex}")

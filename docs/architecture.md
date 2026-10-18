@@ -53,7 +53,7 @@ Retell voice bridge ([voice.md](voice.md)), labeled origin `phone`. Design and h
 | `dualuse/live_surge.py`, `surge_scripts.py` | Labeled batch of callers injected into the live desk. |
 | `dualuse/storage.py` | SQLite snapshot of the desk. |
 | `dualuse/api.py` | Validated HTTP boundary; one persistent desk per process. |
-| `dualuse/ui.py` | Caller conversation, operator desk, incident reports, incident map, scenario simulator, about page. Panels refresh every 2 s. |
+| `dualuse/ui.py` | Caller conversation (a text line that plays no sound), operator desk (one compact queue table, one details panel for the caller picked in **Caller details**, a reply box after takeover), incident reports, incident map, scenario simulator, about page. Panels refresh every 2 s. |
 | `dualuse/triage.py`, `simulation.py`, `surge.py` | Queue policies and the offline policy simulation, with assumed error rates or measured tier shares. |
 | `dualuse/evaluation.py`, `scripts/evaluate_messages.py` | First-turn evaluation on recorded disaster messages with proxy labels: each sampled message through a fresh desk in offline and Claude modes; Wilson intervals; measured tier shares for the simulator ([evaluation.md](evaluation.md)). |
 | `dualuse/voice_bridge.py` | Separate process connecting Retell phone calls to the desk through the REST API only; see [voice.md](voice.md). |
@@ -101,6 +101,12 @@ can also end as `hung_up` or `disconnected`.
   interview and flagged for operator review; NORMAL becomes UNKNOWN. The bridge
   forwards buffered speech in both states. The handoff history remains a snapshot
   at confirmation; the call's full conversation includes later messages.
+- After a confirmed takeover, the operator holding a typed call replies through
+  `POST /calls/{call_id}/operator-message`. The reply is saved as an `operator`
+  turn in the conversation, which the caller view shows within one refresh; it is
+  never classified and never enters the caller-only transcript. Another
+  operator, a call not yet confirmed and a phone call get 409: a phone caller
+  cannot see text, and voice transfer is not connected.
 - The voice bridge marks a call ended only after the desk acknowledges departure
   or reports that it already left the queue. Failed webhook requests remain
   retryable and do not cancel the pending disconnect grace task.

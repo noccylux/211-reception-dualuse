@@ -64,6 +64,7 @@
   and as the reply to later speech.
 * Deployment: the welcome and intake change went live with
   [record 024](2026-10-17-024-automatic-map-location.md)'s restarts at about
-  18:10 PT. The pickup line is not deployed until the bridge (8010) is
-  restarted.
+  18:10 PT. The pickup line went live at 18:37 PT, when the bridge (8010) was
+  restarted from the main checkout at `21ef316` with no call in progress.
+  `/health` returned 200 locally and through the public bridge tunnel.
 * Not verified: a real phone call with either change.

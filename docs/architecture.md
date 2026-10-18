@@ -63,6 +63,15 @@ Retell voice bridge ([voice.md](voice.md)), labeled origin `phone`. Design and h
 
 ## Conversation turn
 
+Each call opens with the desk's fixed welcome (`WELCOME` in
+[profiles.py](../dualuse/profiles.py)): the caller is in the queue for the next
+operator, the assistant is AI and takes details while they wait, the emergency
+number, then "What is happening?". It states no queue position. The intake
+playbook then asks fixed questions in a fixed order, skipping answered ones:
+danger, location, how many people, need, medical or mobility needs. The same
+questions in the caller's language are the fallback replies, and the offline
+keyword mode asks them in the same order.
+
 1. The caller's message is saved; the desk computes this turn's facts: line,
    address format, emergency number in the caller's language, callers ahead in
    the active order, tier so far, transfer status.

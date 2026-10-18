@@ -69,20 +69,17 @@ PROFILES = {
     ),
 }
 
+# Kept short for the phone: queue, AI disclosure, human operator, emergency number, first question.
+# It states no queue position, so it holds whether the queue is tiered or FIFO.
 WELCOME = {
-    "en": ("You are in the waiting queue. Callers already waiting when you joined: {ahead}.{reorder} If you or someone else is in "
-           "danger right now, call {emergency}. I am an automated reception assistant. You can tell me what "
-           "happened and what help you need while you wait, or wait for a person without answering my questions."),
-    "es": ("Está en la fila de espera. Personas que ya esperaban cuando usted llegó: {ahead}.{reorder} Si usted u otra persona está "
-           "en peligro ahora mismo, llame al {emergency}. Soy un asistente automático de recepción. Puede contarme "
-           "qué pasó y qué ayuda necesita mientras espera, o esperar a una persona sin responder mis preguntas."),
-    "zh": ("您已进入排队等候，您加入时已有 {ahead} 位来电者在等候。{reorder}如果您或他人此刻有危险，请立即拨打 {emergency}。"
-           "我是自动接待助手。等候期间，您可以告诉我发生了什么、需要什么帮助；也可以不回答问题，直接等待人工。"),
-}
-REORDER = {
-    "en": " The order can change when someone reports an urgent need.",
-    "es": " El orden puede cambiar cuando alguien reporta una necesidad urgente.",
-    "zh": "如有人报告紧急情况，顺序可能调整。",
+    "en": ("You are in the queue for the next available operator. Please stay on the line. I am an AI assistant, "
+           "and while you wait I will take a few details for the operator. If anyone is in danger right now, "
+           "call {emergency}. What is happening?"),
+    "es": ("Está en la fila para el próximo operador disponible. Por favor, no cuelgue. Soy un asistente de IA y, "
+           "mientras espera, tomaré algunos datos para el operador. Si alguien está en peligro ahora mismo, "
+           "llame al {emergency}. ¿Qué está pasando?"),
+    "zh": ("您已进入排队，请不要挂断，人工接线员会尽快接听。我是 AI 助手，等候期间先为接线员记录几项信息。"
+           "如果有人此刻有危险，请立即拨打 {emergency}。请问发生了什么事？"),
 }
 
 LINES = {
@@ -138,27 +135,31 @@ LINES = {
     },
 }
 
+# The fixed intake questions, in the order the playbook and the rules mode ask them.
 QUESTIONS = {
     "en": {
-        "situation": "What is happening, and what help do you need?",
-        "location": "What is the address or nearest landmark where this is happening?",
-        "safety": "Are you or anyone there in immediate danger, hurt, or unable to leave?",
+        "situation": "What is happening?",
+        "safety": "Is anyone hurt, trapped, or in danger right now?",
+        "location": "What is the address, or the nearest cross street or landmark?",
+        "people": "How many people are with you or affected?",
         "need": "What help do you need most right now?",
-        "detail": "Is there anything else the operator should know about your situation?",
+        "detail": "Does anyone there have medical needs, a disability, or trouble moving?",
     },
     "es": {
-        "situation": "¿Qué está pasando y qué ayuda necesita?",
-        "location": "¿Cuál es la dirección o el punto de referencia más cercano donde está pasando esto?",
-        "safety": "¿Usted o alguien ahí está en peligro inmediato, herido o sin poder salir?",
+        "situation": "¿Qué está pasando?",
+        "safety": "¿Hay alguien herido, atrapado o en peligro ahora mismo?",
+        "location": "¿Cuál es la dirección, o la calle transversal o el punto de referencia más cercano?",
+        "people": "¿Cuántas personas están con usted o están afectadas?",
         "need": "¿Qué ayuda necesita más ahora mismo?",
-        "detail": "¿Hay algo más que el operador deba saber sobre su situación?",
+        "detail": "¿Alguien ahí tiene necesidades médicas, alguna discapacidad o dificultad para moverse?",
     },
     "zh": {
-        "situation": "请问发生了什么事，您需要什么帮助？",
-        "location": "请问事情发生的具体地址或附近地标是哪里？",
-        "safety": "您或现场的人有没有立即的危险、受伤或无法离开？",
+        "situation": "请问发生了什么事？",
+        "safety": "现在有没有人受伤、被困或处于危险中？",
+        "location": "请问具体地址是哪里？或者最近的路口、地标是什么？",
+        "people": "您身边或受影响的一共有几个人？",
         "need": "您现在最需要什么帮助？",
-        "detail": "还有什么情况需要让接线员知道吗？",
+        "detail": "现场有没有人需要医疗照顾、有残障或行动不便？",
     },
 }
 
@@ -177,10 +178,9 @@ def _emergency(profile: Profile, language: str) -> str:
     return _localized(profile.emergency, language)
 
 
-def welcome(profile_key: str, language: str, ahead: int, reorders: bool) -> str:
+def welcome(profile_key: str, language: str) -> str:
     profile = PROFILES[profile_key]
-    reorder = _localized(REORDER, language) if reorders else ""
-    text = _localized(WELCOME, language).format(ahead=ahead, reorder=reorder, emergency=_emergency(profile, language))
+    text = _localized(WELCOME, language).format(emergency=_emergency(profile, language))
     return f"{text} {profile.welcome_extra}".strip()
 
 

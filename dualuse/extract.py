@@ -23,6 +23,9 @@ class Extraction(BaseModel):
     situation: str = Field(description="What is happening, one sentence in English.")
     need: str = Field(description="What the caller asks for, one sentence in English; empty if not stated.")
     location: str | None = Field(description="Where, exactly as the caller stated it; null if not stated.")
+    # Defaults to null so calls stored before the people question still load.
+    people: str | None = Field(None, description="How many people are with the caller or affected, in English; "
+                               "null if not stated.")
     life_threat_now: bool = Field(
         description="Someone is in physical danger right now: trapped, fire or smoke at their location, "
         "a medical emergency, violence in progress."
@@ -246,6 +249,7 @@ def handoff_summary(extraction: Extraction, tier: Tier, waited_s: float) -> str:
             f"Situation: {extraction.situation}",
             f"Need: {extraction.need or 'not stated'}",
             f"Location: {extraction.location or 'not confirmed'}",
+            f"People: {extraction.people or 'not stated'}",
             f"Why this tier: {evidence}",
             f"Still unknown: {', '.join(extraction.missing) or 'nothing flagged'}",
             f"Language: {extraction.language}",

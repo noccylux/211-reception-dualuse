@@ -18,7 +18,7 @@ MAX_REPLY = 1200
 # Hidden thinking counts against max_tokens: on recorded Creole messages 1,600 cut off some answers.
 # The 20 s client timeout, not this limit, bounds how long a caller waits for a turn.
 MAX_TOKENS = 4000
-Topic = Literal["situation", "location", "safety", "need", "detail", "wait"]
+Topic = Literal["situation", "safety", "location", "people", "need", "detail", "wait"]
 
 
 class AgentTurn(BaseModel):
@@ -206,6 +206,7 @@ def rules_turn(dialogue: list[dict]) -> ReceptionTurn:
         candidates.append("safety")
     if not x.location:
         candidates.append("location")
+    candidates.append("people")  # the keyword rules cannot read a head count, so it is asked once
     if not x.need and not x.report_only:
         candidates.append("need")
     candidates.append("detail")

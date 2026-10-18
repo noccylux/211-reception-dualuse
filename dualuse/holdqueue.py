@@ -235,8 +235,7 @@ class HoldQueue:
             call = HeldCall(call_id, self.now(), last_activity=self.now(), profile=self._profile,
                             language=PROFILES[self._profile].languages[0], origin=origin, location=location)
             self._calls[call_id] = call
-            ahead = self._waiting_before(call)
-            self._speak(call, welcome(call.profile, call.language, ahead, reorders=self.active_policy != "fifo"), "welcome")
+            self._speak(call, welcome(call.profile, call.language), "welcome")
             self._log(call, "joined", "Entered queue; no information yet")
             self._save()
             return call
@@ -251,7 +250,8 @@ class HoldQueue:
             "answered first, so never promise a place in line or a wait time.",
             f"- Priority tier set by the desk rules so far: {call.tier.value}.",
             f"- Transfer status: {call.status}.",
-            "- The desk already welcomed the caller, told them their place in the queue and the emergency number.",
+            "- The desk already welcomed the caller: it said they are in the queue for an operator, that you are an AI "
+            "assistant taking details while they wait, and the emergency number, and it asked what is happening.",
         ])
 
     def order(self, policy_name: str) -> list[HeldCall]:

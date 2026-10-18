@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from dualuse import reception
 from dualuse.api import app
-from dualuse.extract import Classification, Extraction
+from dualuse.extract import Classification, Extraction, handoff_summary
 from dualuse.holdqueue import Conflict, HoldQueue
 from dualuse.reception import ReceptionTurn, rules_turn, model_turn
 from dualuse.triage import Tier
@@ -181,7 +181,7 @@ def test_api_exposes_lifecycle_and_rejects_invalid_operations():
     client = TestClient(app)
     call = client.post("/calls", json={}).json()
     cid = call["call_id"]
-    assert "automated reception" in call["dialogue"][0]["text"]
+    assert "AI assistant" in call["dialogue"][0]["text"]
     assert client.post(f"/calls/{cid}/say", json={"text": "  "}).status_code == 422
     assert client.post(f"/calls/{cid}/complete").status_code == 409
     reservation = client.post("/operator/free", json={"operator_id": "alice"}).json()["handoff"]
@@ -345,14 +345,32 @@ def test_an_immediate_report_tells_the_caller_to_call_911():
     assert call.tier == Tier.IMMEDIATE and any("911" in reply for reply in replies)
 
 
-def test_the_welcome_names_the_emergency_number_and_counts_only_callers_ahead():
+def test_the_welcome_names_the_emergency_number_and_the_agent_facts_count_only_callers_ahead():
     q = HoldQueue(1800, mode="rules")
     routine = q.add()
     q.say(routine.call_id, "Where can I renew my CalFresh card")
     newcomer = q.add()
     welcome = newcomer.dialogue[0]["text"]
-    assert "911" in welcome
-    assert re.search(r"waiting when you joined: (\d+)", welcome).group(1) == "1"
+    assert "911" in welcome and not re.search(r"\d+ callers?", welcome)  # no queue position on the welcome
+    assert re.search(r"waiting when this caller joined: (\d+)", q.facts(newcomer)).group(1) == "1"
+
+
+def test_rules_interview_asks_the_fixed_questions_in_order_including_how_many_people():
+    q = HoldQueue(1800, mode="rules")
+    call = q.add()
+    q.say(call.call_id, "There is smoke in our building")
+    q.say(call.call_id, "Nobody is hurt, we are all safe")
+    q.say(call.call_id, "12 Oak Street")
+    q.say(call.call_id, "Four of us")
+    topics = [t["topic"] for t in call.dialogue if t["speaker"] == "assistant" and t["topic"] not in ("welcome", "status")]
+    assert topics[:4] == ["safety", "location", "people", "need"]
+    assert "How many people" in next(t["text"] for t in call.dialogue if t.get("topic") == "people")
+
+
+def test_the_handoff_card_shows_how_many_people():
+    x = result().classification.extraction.model_copy(update={"people": "3, including a baby"})
+    assert "People: 3, including a baby" in handoff_summary(x, Tier.PRIORITY, 30)
+    assert "People: not stated" in handoff_summary(result().classification.extraction, Tier.PRIORITY, 30)
 
 
 def slow(turn):

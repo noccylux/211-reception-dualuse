@@ -22,15 +22,17 @@ caller phone ─► Retell (number, speech-to-text, text-to-speech)
   accepts only `live` (the default, typed calls) or `phone`; anything else
   is a 422. The operator desk marks phone calls "📞 phone" in the queue and,
   on handoff, reminds the operator that the caller's voice is not transferred.
-* The desk decides what the caller hears. The bridge adds only fixed lines:
-  a demo-line notice before the welcome, "Okay." while a turn is processed,
-  an operator-pickup notice when the operator reserves the call, and a short
+* The desk decides what the caller hears, starting with its welcome. The
+  bridge adds only fixed lines: "Okay." while a turn is processed, an
+  operator-pickup notice when the operator reserves the call, and a short
   "still here" notice in place of a desk reply identical to the previous one.
+  Since Sat 2026-10-17 it no longer speaks a demo-line notice first; the
+  welcome is kept short on mentor advice.
 * The phone line is English only. The Retell agent's voice and recognizer are
-  English, so the bridge replaces the line profile's invitation to speak
-  Spanish or Chinese (`welcome_extra` in `dualuse/profiles.py`) with "This
-  phone line works in English only." It reads that fixed text from the code;
-  desk state still comes only through REST. Typed calls keep the invitation. With
+  English, so the bridge drops the line profile's invitation to speak Spanish
+  or Chinese (`welcome_extra` in `dualuse/profiles.py`) from the welcome. It
+  reads that fixed text from the code; desk state still comes only through
+  REST. Typed calls keep the invitation. With
   the `cn-12345` profile the desk welcome is Chinese; the bridge logs a
   warning and the English voice reads it as is, so use `la-211` for calls.
 * Retell silence reminders become desk silence events. A `call_ended`

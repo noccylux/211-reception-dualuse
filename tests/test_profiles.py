@@ -1,21 +1,22 @@
 from dualuse.profiles import PROFILES, fallback_question, language_of, line, welcome
 
 
-def test_la_welcome_names_911_the_queue_position_and_other_languages():
-    text = welcome("la-211", "en", ahead=0, reorders=True)
-    assert "911" in text and "0" in text
+def test_la_welcome_discloses_the_ai_names_911_asks_what_is_happening_and_offers_other_languages():
+    text = welcome("la-211", "en")
+    assert text.startswith("You are in the queue") and "AI assistant" in text and "operator" in text
+    assert "911" in text and "What is happening?" in text
     assert "español" in text and "中文" in text
 
 
+def test_welcomes_in_every_language_disclose_the_ai_and_end_on_the_first_question():
+    assert "asistente de IA" in welcome("la-211", "es") and welcome("la-211", "es").count("?") == 1
+    assert "AI 助手" in welcome("la-211", "zh") and "人工接线员" in welcome("la-211", "zh")
+
+
 def test_china_welcome_is_mandarin_with_local_emergency_numbers():
-    text = welcome("cn-12345", "zh", ahead=2, reorders=True)
+    text = welcome("cn-12345", "zh")
     assert all(number in text for number in ("110", "119", "120"))
-    assert "2" in text and "排队" in text
-
-
-def test_fifo_welcome_does_not_promise_reordering():
-    assert welcome("la-211", "en", ahead=1, reorders=False) != welcome("la-211", "en", ahead=1, reorders=True)
-    assert "change" not in welcome("la-211", "en", ahead=1, reorders=False).split("911")[0]
+    assert "排队" in text and "发生了什么" in text
 
 
 def test_emergency_line_follows_the_caller_language_and_keeps_the_profile_number():
@@ -29,7 +30,7 @@ def test_unknown_language_falls_back_to_english():
 
 
 def test_fallback_questions_exist_for_every_topic_in_profile_languages():
-    for topic in ("situation", "location", "safety", "need", "detail"):
+    for topic in ("situation", "safety", "location", "people", "need", "detail"):
         assert fallback_question(topic, "zh").endswith("？")
         assert fallback_question(topic, "es").endswith("?")
     assert fallback_question("wait", "en") == ""

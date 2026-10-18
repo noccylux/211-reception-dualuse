@@ -41,5 +41,13 @@
   sent through the bridge to an in-process desk with a temporary database
   and a simulated 1.5 s interview. The newest request got the desk's reply,
   and the desk transcript holds every sentence.
-* Not verified: a real phone call on the fixed bridge. The running bridge
-  (port 8010, started 16:01) still runs the old code until it is restarted.
+* Real call `call_d9482d11…` (17:49 PT, desk call `call-67`) on the fixed
+  bridge. Requests 2–4 came within 0.5 s for one growing utterance. The
+  bridge sent no empty reply, and Retell spoke the desk's reply on id 4.
+  Every later request also got a spoken reply.
+* Limits seen in that call:
+  * The caller spoke Chinese, which has no spaces between words. A grown
+    utterance ("…受害" to "…受害者") was resent whole, so the desk shows
+    that caller line twice.
+  * When the utterance grows during a turn, two desk turns run one after
+    the other. The reply came 6.3 s after the newest request.

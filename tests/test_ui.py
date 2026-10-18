@@ -179,6 +179,7 @@ def test_the_operator_desk_injects_a_labeled_surge(desk):
     app = run_app()
     app.sidebar.radio[0].set_value("Operator desk").run()
     app.selectbox(key="surge_source").set_value("scripts")
+    app.selectbox(key="surge_pattern").set_value("even")  # "austin" needs the downloaded dataset
     app.number_input(key="surge_span").set_value(0)
     app.button(key="surge_start").click().run()
     from dualuse import api

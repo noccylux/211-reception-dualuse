@@ -20,7 +20,9 @@
 
 ## Verification
 
-* `bash scripts/check-launcher.sh` with the distribution read from `.env`: both checks passed. `.scriptsV-run.ps1 python -c ...` ran in WSL too.
+* `bash scripts/check-launcher.sh` with the distribution read from `.env`: both checks passed. `scripts/uv-run.ps1 python -c ...` ran in WSL too.
 * Full suite through the launcher: `python -m pytest tests -q`, **496 passed in 73.59 s**.
 * `git grep` over the tracked tree for the distribution name, drive paths, email addresses and the agent id after the change: no matches outside `docs/local/`.
 * Commit messages on all branches contain none of the replaced strings.
+* Mirror build (private `main` to the filtered clone): the leak checks found nothing; one commit that only added a local note was pruned as empty; all commits carry the noreply author address.
+* Clean-checkout check in the mirror clone with the generic README steps (`uv sync --frozen`, then the test suite): **495 passed, 1 failed**. The surge UI test asked for Austin arrivals, which read a downloaded dataset absent from a clone. The test now selects even arrivals (its subject is the origin label, not the arrival pattern) and passes here; the README says which demo options need the datasets. The rerun in the rebuilt mirror is recorded below when done.

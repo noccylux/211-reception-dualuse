@@ -86,6 +86,9 @@ The following is a team-written scenario, not a real call:
    content and Austin arrivals, and inject. Team-written scripts (simulated) and
    Munro disaster messages (recorded, labeled per call) fill the queue while
    life threats move to the top. The surge makes about 30 model calls.
+   Mixed or message content and Austin arrivals read the downloaded datasets
+   described in [docs/datasets.md](docs/datasets.md); without them the desk
+   shows "Dataset missing", so choose scripts content and even arrivals.
 10. Scenario simulator: the measured-rates table shows the offline rules and
     Claude on recorded 2010 Haiti and Pakistan SMS and Hurricane Sandy posts
     (proxy labels, first message only, not 211 calls). Run the replay to compare

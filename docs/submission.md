@@ -341,7 +341,7 @@ Notes:
 | Criterion | Our evidence |
 |---|---|
 | Dual-use fit (tie-breaker) | One build for an ordinary 211 day and a fire or flood surge ([architecture](architecture.md#dual-use-story)); the China 12345 profile; an installation line planned for the defense end user |
-| Technical execution | Claude turns with code-checked evidence, deterministic tiers and two-phase handoff, SQLite persistence across restarts, Retell bridge with signed webhooks, labeled live surge; 470 tests pass on branch `mentor-quick-wins` (Sat 2026-10-17 17:25 PT) |
+| Technical execution | Claude turns with code-checked evidence, deterministic tiers and two-phase handoff followed by operator text replies, SQLite persistence across restarts, Retell bridge with signed webhooks, labeled live surge; 470 tests pass on `main` at `a909348` (Sat 2026-10-17 17:25 PT) |
 | Feasibility and impact | 211 LA's January 2025 figures show the surge; runs on one laptop; labeled fallbacks when the model is down; DHS S&T SBIR path; no accuracy or wait-time claims until measured |
 | Adapting to twists | Twist 1 submitted; Twist 2 built as a line profile with checked facts; Twist 3 poster produced ([twists.md](problem/twists.md)) |
 | Demo and pitch | Nine-step demo path with a two-person caller and operator text exchange, live surge, English phone calls through Retell, poster, 3-minute script above |

@@ -48,4 +48,8 @@
   * With call-5 chosen in **Caller details**, a message through the API raised it from normal to immediate and moved it to the head of the queue. The panel still showed call-5 after several refreshes.
   * An unsent draft in the caller's message box stayed after `operator-2` reserved the call, while the placeholder changed to **Type a message to the operator**.
   * The refused-reply error was checked by test only.
-* Not verified: the public deployment (ports 8000 and 8501 still run the earlier `main` until restarted), and phone calls.
+* Deployment, Sat 2026-10-17 about 17:30 PT: committed as `a909348` on `mentor-quick-wins` and fast-forwarded `main`, not pushed.
+  * API port 8000 and UI port 8501 were restarted with each old process's working directory, environment and command line. The API kept `DUALUSE_QUEUE_DB=.tmp/voice-main.sqlite3` and `DUALUSE_MAP_URL=https://demo.211deskdemo.site`; the UI kept `DUALUSE_MAP_URL`. Logs append to `.tmp/public-map-demo/`.
+  * Local checks: API `/health` returned ok, and the stored desk came back (43 calls, 10 waiting, model mode). `POST /calls/no-such-call/operator-message` returned the new route's 404 "Unknown call". UI `/_stcore/health` returned ok.
+  * Public checks, read only: `https://demo.211deskdemo.site/` returned 200 and showed the text-line note. The operator desk showed the compact table, **Caller details** and its panel, with no errors. The incident map frame loaded from `/plugins/map/?line=la-211`, and `/plugins/map/health` returned 200.
+* Not verified: an operator reply on the public desk (it would add a call to the live desk), phone calls, and the voice bridge on port 8010 after the API restart.

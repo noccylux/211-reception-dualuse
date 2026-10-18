@@ -1,14 +1,14 @@
 # The Dual-Use Hackathon: event facts
 
-Official facts from the saved website and Field Manual in
-[information/](information/), supplemented by the Twist 2/3 announcements
+Official facts from the organizers' website and Field Manual (saved locally
+in the git-ignored `docs/information/`, not published), supplemented by the Twist 2/3 announcements
 relayed by the user on Sat 2026-10-17. Live changes are announced first on the
 WhatsApp community; record them here with their source. All times are
 Pacific time.
 
 Website: <https://www.innovatelosangeles.com/dual-use> · Participant portal:
 <https://www.innovatelosangeles.com/dual-use/app/sign-in> · Devpost:
-<https://innovatela.devpost.com/> · Questions: organizer address in the participant portal ·
+<https://innovatela.devpost.com/> · Questions: the organizers' address in the participant portal ·
 Help desk: RTH 526.
 
 ## The brief

@@ -5,7 +5,7 @@ it is judged, followed by our reading. Status: revealed; track and idea
 chosen Sat 2026-10-17 00:45 PT (see [Our track choice](#tracks)). Twists go in [twists.md](twists.md); general event facts are in
 [../hackathon.md](../hackathon.md).
 
-Sources, saved in [../information/](../information/):
+Sources (saved locally in the git-ignored `docs/information/`, not published):
 
 - Participant Hub, section "Problem Statement", headed "Preparing for
   Disaster: The Reveal Page" and "MYSTERY PROMPT @ Friday 6.15 PM". Saved

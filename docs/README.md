@@ -1,3 +1,5 @@
+English · [中文](README.zh-CN.md)
+
 # Documentation layout
 
 | Path | Holds | Changes |
@@ -12,6 +14,7 @@
 | [poster/](poster/) | Twist 3 poster: HTML source, exported PDF and PNG, demo screenshots. Export command in [submission.md](submission.md#poster). | When the poster changes. |
 | [changes/](changes/) | The timeline: one record per decision, twist response or feature. | Append-only. |
 | [agents/](agents/) | Working rules for coding agents, indexed by the root `AGENTS.md`. | When a rule changes. |
-| [information/](information/) | Saved official sources: the website and the Field Manual PDF. | Never edited. |
+| `local/` | Git-ignored, present only on the authors' machines: the local Python environment, launcher and publishing notes for their agents. Absent in a fresh clone, by design. | Locally. |
+| `information/` | Git-ignored: saved organizer pages and PDFs that `hackathon.md` and `problem/` cite. | Never edited. |
 
 Record format and naming: [agents/change-records.md](agents/change-records.md).

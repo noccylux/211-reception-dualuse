@@ -30,8 +30,6 @@ dependencies = [
     "pandas",
     "plotly",
     "pydeck",
-    # Local models on the GPU
-    "torch",
 ]
 
 [dependency-groups]
@@ -39,11 +37,3 @@ dev = ["pytest"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-
-[tool.uv.sources]
-torch = { index = "pytorch-cu132" }
-
-[[tool.uv.index]]
-name = "pytorch-cu132"
-url = "https://download.pytorch.org/whl/cu132"
-explicit = true

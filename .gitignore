@@ -35,12 +35,12 @@ data/
 .idea/
 .vscode/
 
-# Claude Code: share settings, hooks and skills; keep the rest local.
-/.claude/*
-!/.claude/settings.json
-!/.claude/hooks/
-!/.claude/skills/
-!/.claude/launch.json
+# Agent tooling and machine-specific notes stay local; the public repository
+# documents a generic setup in README.md and AGENTS.md.
+/.claude/
+/.agents/
+/.codex/
+/docs/local/
 
-# Codex
-/.codex
+# Saved third-party event material (organizer pages, PDFs, photographs).
+/docs/information/

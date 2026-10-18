@@ -2,8 +2,9 @@
 
 Read before creating or editing repository documentation. Use concise English
 in the repository; give Chinese explanations in chat when requested. Keep code
-identifiers, paths, commands and domain terms exact. Do not maintain parallel
-translations.
+identifiers, paths, commands and domain terms exact. The only translated files
+are the READMEs: each `README.md` is English and has a `README.zh-CN.md` twin
+with the same sections, updated in the same change. Other docs are English only.
 
 ## Write for retrieval and verification
 
@@ -21,8 +22,9 @@ translations.
 
 ## Document roles
 
-- `docs/hackathon.md`: official event facts, sourced from
-  `docs/information/`. Update when organizers announce a change, noting the
+- `docs/hackathon.md`: official event facts, sourced from the organizers'
+  website and Field Manual (saved locally in the git-ignored
+  `docs/information/`). Update when organizers announce a change, noting the
   source (WhatsApp, portal, in the room).
 - `docs/problem/`: the official problem and twists, verbatim, plus our
   reading of them.
@@ -30,5 +32,7 @@ translations.
 - `docs/changes/`: dated decisions and outcomes under
   [change-records.md](change-records.md). Read as history.
 - `docs/submission.md`: Devpost material, the AI tool list and the pitch.
-- `docs/information/`: saved official sources. Never edit.
+- `docs/information/`: saved official sources, git-ignored. Never edit.
+- `docs/local/`: git-ignored notes for the authors' own machines; absent in
+  a fresh clone. Public docs never depend on it.
 - README: entry point, quickstart and demo instructions.

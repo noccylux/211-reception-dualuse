@@ -6,16 +6,15 @@ the Dual-Use Hackathon (InnovateLA × USC Viterbi, Los Angeles, Fri 2026-10-16
 [docs/hackathon.md](docs/hackathon.md); the problem and its twists are in
 [docs/problem/](docs/problem/).
 
-Task-specific rules live in `docs/agents/` and are exposed as skills (Claude
-Code: `.claude/skills/`, Codex: `.agents/skills/`) so they load only when
-needed. Invoke the matching skill or read the file; do not work from memory.
+Task-specific rules live in `docs/agents/`. Read the matching file when its
+row applies; do not work from memory.
 
 | Rule file | Use when |
 |---|---|
 | [docs/agents/twist-response.md](docs/agents/twist-response.md) | A twist (problem change) arrives, or when deciding how a change serves a twist. |
 | [docs/agents/change-records.md](docs/agents/change-records.md) | Before reporting completion of a task, to decide whether and how to record it. |
 | [docs/agents/documentation.md](docs/agents/documentation.md) | Creating or editing Markdown under `docs/` or a README. |
-| [docs/agents/environment.md](docs/agents/environment.md) | Adding dependencies, running servers, diagnosing the launcher, or checking CUDA. |
+| `docs/local/environment.md` (git-ignored) | Present only on the authors' machines. If it exists, read it first: it describes that machine's Python environment, launcher, servers and push procedure, and it overrides the generic steps below. If it does not exist, you are on a fresh clone: use the generic steps below and do not create the file. |
 
 ## Hackathon constraints
 
@@ -35,28 +34,30 @@ needed. Invoke the matching skill or read the file; do not work from memory.
 
 ## Python environment
 
-Every Python command runs in the WSL distribution `WSL`, in the
-project's `.venv_wsl` (Python 3.14), through the launcher. Never run bare
-`python`, `pytest`, `pip`, `uv`, `streamlit` or `uvicorn`, the Windows Conda
-environment, or `.venv_wsl\Scripts`. In Claude Code the PreToolUse hook
-`.claude/hooks/block-bare-python.sh` blocks such Bash commands.
+Generic steps, for any machine without `docs/local/environment.md`. Python
+3.14 and [uv](https://docs.astral.sh/uv/) are required; the lock file is the
+source of truth for versions.
 
 ```text
-bash scripts/uv-run.sh python -m pytest            # Git Bash or WSL
-.\scripts\uv-run.ps1 python -m pytest              # PowerShell 7.3+ on Windows
+uv sync --frozen                      # create .venv from uv.lock, once
+uv run python -m pytest tests -q      # every Python command goes through uv run
 ```
 
-Run from the repository root. The launcher uses the existing environment and
-never creates, repairs or syncs it. Dependency sync, servers and CUDA checks
-are in `docs/agents/environment.md`.
+Run from the repository root. Never run bare `python`, `pytest` or `pip`
+against some other interpreter: the tests and servers must see the locked
+environment. Server commands are in [README.md](README.md). The
+`scripts/uv-run.sh` and `scripts/uv-run.ps1` launcher is the authors'
+Windows + WSL equivalent of `uv run`; it needs `DUALUSE_WSL_DISTRO` in `.env`
+and is not required elsewhere.
 
 ## Layout
 
 | Path | Holds |
 |---|---|
 | `dualuse/` | The build. `api.py` is the FastAPI backend and webhook endpoint, `ui.py` the Streamlit demo, `config.py` reads secrets from `.env`. |
+| `crisisfusion_map/`, `crisisfusion_scoring/` | Vendored plugins (incident map, call scorer), each with its own README. |
 | `tests/` | Tests mirroring `dualuse/` and `scripts/`. |
-| `scripts/` | Launcher (`uv-run.sh`, `uv-run.ps1`, `check-launcher.sh`) and `check_keys.py`, which verifies the API keys in `.env`. |
+| `scripts/` | The WSL launcher, `check_keys.py` (verifies the API keys in `.env`), the evaluation and Retell setup scripts. |
 | `docs/` | Event facts, problem and twist log, architecture, submission material and change records; see [docs/README.md](docs/README.md). |
 
 Secrets live only in `.env` (git-ignored); `.env.example` lists the names.
@@ -88,9 +89,7 @@ Verification
 - Before reporting a change complete or committing it, run `tests/` and say
   what ran and what passed. Never skip or weaken a failing test to pass.
 - For UI or API changes, also start the server and exercise the changed path.
-- The workstation is shared with other GPU/CPU workloads; draw no
-  performance conclusions from ordinary runs. Before treating an OOM or
-  slowdown as a defect, check `nvidia-smi` for other processes.
+- Draw no performance conclusions from ordinary runs on a shared machine.
 
 Scope and reporting
 - Change only what the task needs, including callers, tests and docs.
@@ -101,11 +100,4 @@ Scope and reporting
   Otherwise state the assumption and continue.
 - When finished, report what changed, what was verified and how,
   assumptions made, and anything left undone.
-
-## Git commit and push authorization
-
-* The user is authorized to upload code for this project to https://github.com/noccylux/TheDualUseHackathon.git.
-* When the user asks to "commit and upload," "push," or uses equivalent wording, you may stage all non-ignored changes, create a commit, and perform a normal push to the current branch of this repository without asking for confirmation again.
-* Before pushing, verify the remote repository URL. If the remote URL has changed, ask for confirmation again.
-* This authorization does not include force pushes, deletion of remote branches, or rewriting remote history.
-* If the user only asks for code changes, do not automatically commit or push.
+- Commit or push only when the user asks.

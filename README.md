@@ -1,3 +1,5 @@
+English · [中文](README.zh-CN.md)
+
 # 211 reception and hold-queue assistant
 
 A local text demo for a community and disaster assistance line. A caller joins
@@ -11,26 +13,34 @@ calls can reach the desk through the separate Retell voice bridge
 
 ## Run
 
-Run from this checkout, using WSL and the shared `.venv_wsl` as described
-in [the environment rules](docs/agents/environment.md). No new dependencies
-are required by the reception upgrade. Two terminals:
+Requirements: Python 3.14 and [uv](https://docs.astral.sh/uv/). From a clean
+checkout, create the locked environment, copy `.env.example` to `.env` and fill
+in `ANTHROPIC_API_KEY` (the other keys are optional), then start the API and the
+UI in two terminals:
 
-```powershell
-.\scripts\uv-run.ps1 uvicorn dualuse.api:app --host 127.0.0.1 --port 8000
-.\scripts\uv-run.ps1 streamlit run dualuse/ui.py --server.address 127.0.0.1 --server.port 8501 --server.headless true
+```bash
+uv sync --frozen
+uv run uvicorn dualuse.api:app --host 127.0.0.1 --port 8000
+uv run streamlit run dualuse/ui.py --server.address 127.0.0.1 --server.port 8501 --server.headless true
 ```
 
-Open <http://localhost:8501>. For an isolated demo alongside the original ports:
+Open <http://localhost:8501>. For an isolated demo alongside the original ports,
+set `DUALUSE_QUEUE_DB` for the API and `DUALUSE_API_URL` for the UI, for example:
 
-```powershell
-.\scripts\uv-run.ps1 env DUALUSE_QUEUE_DB=.tmp/reception-demo.sqlite3 uvicorn dualuse.api:app --host 127.0.0.1 --port 8020
-.\scripts\uv-run.ps1 env DUALUSE_API_URL=http://127.0.0.1:8020 streamlit run dualuse/ui.py --server.address 127.0.0.1 --server.port 8521 --server.headless true
+```bash
+DUALUSE_QUEUE_DB=.tmp/reception-demo.sqlite3 uv run uvicorn dualuse.api:app --host 127.0.0.1 --port 8020
+DUALUSE_API_URL=http://127.0.0.1:8020 uv run streamlit run dualuse/ui.py --server.address 127.0.0.1 --server.port 8521 --server.headless true
 ```
+
+In PowerShell, set the variable first, for example `$env:DUALUSE_QUEUE_DB = ".tmp/reception-demo.sqlite3"`.
+The `scripts/uv-run.sh` and `scripts/uv-run.ps1` launcher that the change
+records mention is the authors' Windows + WSL equivalent of `uv run`; it needs
+`DUALUSE_WSL_DISTRO` in `.env` and is not needed elsewhere.
 
 To show the incident map to visitors through a tunnel, route the public
 hostname's `/plugins/map/` path to the API and start both API and UI with
 `DUALUSE_MAP_URL` set to the public URL, for example
-`.\scripts\uv-run.ps1 env DUALUSE_MAP_URL=https://demo.211deskdemo.site uvicorn ...`
+`DUALUSE_MAP_URL=https://demo.211deskdemo.site uv run uvicorn ...`
 ([architecture](docs/architecture.md#failure-behavior-and-limits)).
 
 Keep one API process per database: do not use multiple workers. `ANTHROPIC_API_KEY`
@@ -87,8 +97,8 @@ clears this desk. There is no authentication: use only local demo data.
 
 ## Verify and interpret
 
-```powershell
-.\scripts\uv-run.ps1 python -m pytest tests -q
+```bash
+uv run python -m pytest tests -q
 ```
 
 Tests use isolated databases and no paid model calls; `tests/test_ui.py` drives
@@ -98,8 +108,8 @@ has run, tier shares measured on recorded disaster messages with proxy labels
 ([evaluation](docs/evaluation.md)). Neither is 211 accuracy or a real queue
 wait. Rerunning the evaluation replays cached Claude responses for free:
 
-```text
-bash scripts/uv-run.sh env -u ANTHROPIC_API_KEY python scripts/evaluate_messages.py
+```bash
+env -u ANTHROPIC_API_KEY uv run python scripts/evaluate_messages.py
 ```
 
 Details: [architecture](docs/architecture.md), change records

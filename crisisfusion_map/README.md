@@ -1,12 +1,14 @@
-# CrisisFusion 地图插件 1.0.0
+English · [中文](README.zh-CN.md)
 
-这是可以迁移到其他主体的独立 Python / ASGI 插件，自带网页、HTTP API、地址判断器、区域关联器、LA County 县界和 Leaflet 静态资源。**不需要安装打分器、语音插件或原 CrisisFusion 主应用**。可以独立启动，也可以挂在现有 FastAPI / Starlette 主体下，通过 iframe 显示。
+# CrisisFusion map plugin 1.0.0
 
-它接收宿主提供的完整通话文本和修订号，保留地址原话、核查依据及来源；按地址状态画不同形状，并根据有来源、当前有效的区域关联显示颜色。它不会计算或改变通话优先级。宿主可另外提供评分摘要，仅供展示。
+This is a standalone Python / ASGI plugin that can be moved to another host. It ships with its own web page, HTTP API, address detector, area matcher, LA County boundary and Leaflet static assets. **It does not require the scorer, the voice plugin or the original CrisisFusion main application.** It can run on its own or be mounted under an existing FastAPI / Starlette host and shown in an iframe.
 
-## 安装与独立运行
+It takes the full call text and a revision number from the host, keeps the address as spoken, the verification evidence and its source; it draws a different shape for each address status and colors it by sourced, currently valid area matches. It never computes or changes a call's priority. The host may additionally supply a scoring summary, which is shown for display only.
 
-需要 Python 3.11 或以上。建议在自己的项目虚拟环境中安装；离线机器需要预先准备依赖 wheel。
+## Installation and standalone run
+
+Requires Python 3.11 or later. Install it in your own project's virtual environment; an offline machine needs the dependency wheels prepared in advance.
 
 ```powershell
 python -m venv .venv
@@ -14,11 +16,11 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m crisisfusion_map --host 127.0.0.1 --port 8812 --db work/map.sqlite3
 ```
 
-如果拿到的是 wheel，可使用 `python -m pip install crisisfusion_map-1.0.0-py3-none-any.whl`，然后运行同一 CLI。打开 [本机地图页面](http://127.0.0.1:8812/)；先点“启用地图插件”。网页顶端“接入通话 / 独立测试”可手动保存通话全文。插件默认关闭；加载页面、启用插件或保存通话都不会自动请求官方数据、地址服务或设备定位。
+If you were given a wheel, use `python -m pip install crisisfusion_map-1.0.0-py3-none-any.whl` and then run the same CLI. Open the [local map page](http://127.0.0.1:8812/) and first click "Enable map plugin". The "Connected call / standalone test" box at the top of the page lets you save a call's full text by hand. The plugin is off by default; loading the page, enabling the plugin or saving a call never requests official data, address services or device location on its own.
 
-默认 CLI 数据库是相对当前工作目录的 `work/map.sqlite3`。`create_app()` 默认使用内存数据库；生产宿主应明确指定自己的文件。只支持 **单进程、单 worker**，不要用多个实例写同一个 SQLite 文件。文本、精确位置和核查记录以明文保存；宿主负责文件访问权限、备份与保留周期。没有自动后台下载、跟踪、付费 API 调用或外部遥测。
+The default CLI database is `work/map.sqlite3`, relative to the current working directory. `create_app()` defaults to an in-memory database; a production host should name its own file explicitly. Only **a single process with a single worker** is supported; do not let several instances write the same SQLite file. Text, precise locations and verification records are stored in plain text; the host is responsible for file permissions, backups and retention. There are no automatic background downloads, tracking, paid API calls or external telemetry.
 
-## 挂到另一个主体
+## Mounting under another host
 
 ```python
 from contextlib import AsyncExitStack, asynccontextmanager
@@ -46,19 +48,21 @@ map_app.state.store.upsert_call({
 map_app.state.store.set_active_call("call-123", active=True)
 ```
 
-运行 `uvicorn your_module:host --host 127.0.0.1 --port 8000`。页面地址是 `/plugins/map/`，静态资源和 API 都按当前前缀解析；无原站导航、DOM 或语音全局变量依赖。主体可嵌入：
+(The two comments in the snippet say: Starlette does not start a mounted sub-application's lifespan on its own, so the host manages it explicitly; and call events the host has already validated can be written server-side without going through HTTP.)
+
+Run `uvicorn your_module:host --host 127.0.0.1 --port 8000`. The page lives at `/plugins/map/`; static assets and the API resolve under the current prefix, with no dependency on the original site's navigation, DOM or voice globals. The host can embed it:
 
 ```html
 <iframe src="/plugins/map/" title="通话地图" style="width:100%;height:1000px;border:0" allow="geolocation 'self'"></iframe>
 ```
 
-浏览器设备定位需要 HTTPS 或 localhost、页面和宿主 Permissions-Policy 允许，并由用户点击和授权。不要给不可信的跨站 iframe 开放地理位置。该 iframe 不自动读宿主内存，也不使用 `postMessage` 接收任意站点的数据；宿主通过下面的 API 或 Python 方法更新。
+Browser device location needs HTTPS or localhost, a Permissions-Policy that allows it on both the page and the host, and a click plus consent from the user. Do not open geolocation to untrusted cross-site iframes. The iframe does not read host memory and does not accept data from arbitrary sites via `postMessage`; the host updates it through the API or Python methods below.
 
-公网域名需要显式 `create_app(allowed_hosts=["console.example.com"])`，并在宿主层加入身份验证、授权、HTTPS 和访问控制。这里只做 Host / 同源 / CSRF 检查；**CSRF token 可由同源页面读取，不是用户身份认证**。不要直接把开发 CLI 暴露公网；反向代理应正确设置被信任的协议/Host，不能盲目信任外部转发头。
+A public domain needs an explicit `create_app(allowed_hosts=["console.example.com"])` plus authentication, authorization, HTTPS and access control at the host layer. The plugin only performs Host / same-origin / CSRF checks; **the CSRF token is readable by any same-origin page and is not user authentication**. Do not expose the development CLI directly to the public internet; a reverse proxy must set the trusted scheme/Host correctly and must not blindly trust external forwarded headers.
 
-## 通话输入契约
+## Call input contract
 
-`app.state.store.upsert_call(payload)` 与 `POST /api/geo/calls` 使用相同字段。每次发送当前 **完整原文快照**，不要仅发送新增句子；宿主负责把语音片段按序合成全文。
+`app.state.store.upsert_call(payload)` and `POST /api/geo/calls` take the same fields. Send the current **complete text snapshot** every time, not just the new sentences; the host is responsible for assembling voice fragments into the full text in order.
 
 ```json
 {
@@ -74,25 +78,25 @@ map_app.state.store.set_active_call("call-123", active=True)
 }
 ```
 
-| 字段 | 约束 |
+| Field | Constraint |
 | --- | --- |
-| `call_id` | 必填，1–128 字符，字母数字开头，可用字母数字、点、下划线、冒号、连字符 |
-| `revision` | 必填，1 到 2147483647 的整数；新修改必须递增，可以跳号 |
-| `text` | 必填字符串，最多 100000 字符，可为空；原文空格及换行完整保留 |
-| `language` | 默认 `und`，最多 32 字符；地址规则主要覆盖美式地址及部分英语、西语、中文表述 |
-| `timestamp` | 可选，带时区 ISO 8601 时间，保留为 `source_timestamp`；没有时用接收时间 |
-| `event_id` | 可选，1–512 字符；重复 ID 不能携带不同数据 |
-| `input_mode` | 默认 `host`；`browser_voice` 标记转写未核实，`replay` / `simulated_voice` 标记合成输入 |
-| `location` | 可选对象，仅支持 `label`、`lat`、`lon`、`source`、`accuracy_m`；是报告事件地点，不是设备 GPS；经纬度须同时提供 |
-| `priority_assessment` | 可选，仅接受 `category`、0–100 的 `score`、`policy_version`；不导入或调用打分器 |
+| `call_id` | Required, 1–128 characters, starts with a letter or digit; letters, digits, dots, underscores, colons and hyphens allowed |
+| `revision` | Required integer from 1 to 2147483647; each new change must increase it, gaps are allowed |
+| `text` | Required string, at most 100000 characters, may be empty; original whitespace and line breaks are kept intact |
+| `language` | Defaults to `und`, at most 32 characters; the address rules mainly cover US addresses and some English, Spanish and Chinese phrasings |
+| `timestamp` | Optional ISO 8601 time with time zone, kept as `source_timestamp`; the receive time is used when absent |
+| `event_id` | Optional, 1–512 characters; a repeated ID must not carry different data |
+| `input_mode` | Defaults to `host`; `browser_voice` marks an unverified transcript, `replay` / `simulated_voice` mark synthetic input |
+| `location` | Optional object; only `label`, `lat`, `lon`, `source`, `accuracy_m` are supported; it is the reported incident location, not device GPS; lat and lon must be given together |
+| `priority_assessment` | Optional; only `category`, a `score` from 0–100 and `policy_version` are accepted; the scorer is neither imported nor called |
 
-同一当前修订号且所有规范化输入字段完全一致，返回 `duplicate: true`，不会新增历史。已经成功接收的 `event_id` 携带完全相同数据，即使当前通话已更新到更大修订号，仍返回重复成功，附 `event_revision`，不会把当前文本回滚；便于宿主断点重放。相同修订号不同内容、从未接收过的旧修订、相同 `event_id` 不同数据都返回 409。即使收到内容相同的更大修订号，它仍代表新的核查版本，旧人工确认失效；前端要求重新核查。返回的 `upsert_result.call.revisions` 保存完整历史，最多每通话 100 个修订，每个库最多 1000 通话，达到上限会明确拒绝，不会静默丢原话。宿主遇到 409 或其他失败应保留消费游标与原事件，处理版本冲突或归档容量后重试，不能直接跳过事件。
+The same current revision with all normalized input fields identical returns `duplicate: true` and adds no history. An already accepted `event_id` carrying exactly the same data still returns a duplicate success with `event_revision`, even when the call has since moved to a higher revision, and does not roll the current text back; this lets the host replay from a checkpoint. The same revision with different content, an old revision never received before, or the same `event_id` with different data all return 409. Even a higher revision with identical content is a new verification version: the old manual confirmation expires and the front end asks for a fresh review. The returned `upsert_result.call.revisions` holds the full history, up to 100 revisions per call and 1000 calls per database; reaching a limit is refused explicitly, never by silently dropping the original text. On a 409 or any other failure the host should keep its consumer cursor and the original event, resolve the version conflict or archive for capacity, and then retry; it must not skip the event.
 
-`set_active_call(call_id, active=True)` 只声明宿主所知的通话生命周期，不构成定位授权。通话结束时必须调用 `active=False`。进程重启后活动标记全部清除，防止旧通话仍被视为正在进行。
+`set_active_call(call_id, active=True)` only declares the call lifecycle as the host knows it and is not a location authorization. Call `active=False` when the call ends. All active flags are cleared on process restart so an old call is not still treated as in progress.
 
-## HTTP 使用与常用接口
+## HTTP usage and common endpoints
 
-首先 `GET /api/geo/state` 获得 `csrf_token` 和 `store_id`。`store_id` 是数据库初始化时生成并持久化的 UUID：同一个数据库重启保持不变，新数据库使用新 ID。宿主中继应把消费游标绑定到 `store_id`，发现同一 URL 换了数据库时重放历史或重新初始化游标，避免旧游标跳过新库尚未接收的事件。所有写请求都需要实际页面所在 Origin（协议 + 主机 + 端口，**不要附加插件路径**）及 `X-CrisisFusion-Geo`。跨源浏览器调用不开放 CORS；跨服务集成建议在受保护宿主服务端调用 Python 方法，或由宿主同源代理。以下示例针对独立端口；挂载时只改 `base`：
+First `GET /api/geo/state` to obtain `csrf_token` and `store_id`. `store_id` is a UUID generated and persisted when the database is initialized: it survives restarts of the same database, and a new database gets a new ID. A host relay should bind its consumer cursor to `store_id` and, when it finds the same URL now serves a different database, replay history or re-initialize the cursor, so an old cursor does not skip events the new database has not received. Every write request needs the Origin of the actual page (scheme + host + port, **without the plugin path**) and `X-CrisisFusion-Geo`. CORS is not opened for cross-origin browser calls; for cross-service integration, call the Python methods from the protected host server, or have the host proxy same-origin. The example below targets the standalone port; when mounted, change only `base`:
 
 ```python
 import httpx
@@ -110,24 +114,26 @@ with httpx.Client() as client:
     client.post(base + "/api/geo/calls/call-123/active", json={"active": True}).raise_for_status()
 ```
 
-| 接口 | 用途 |
-| --- | --- |
-| `GET /health` | 插件版本与存活状态 |
-| `GET /api/geo/state` | 当前地图、数据源、通话地址和区域评估、token |
-| `POST /api/geo/calls` | 完整通话快照；返回地图状态及 `upsert_result` |
-| `POST /api/geo/calls/{call_id}/active` | `{"active":true}` / `false`，返回地图状态及 `activity_result` |
-| `POST /api/geo/config` | `{"enabled":true,"providers":{"nws":true,"usgs":true}}`，字段可按需省略 |
-| `POST /api/geo/refresh` | 明确手动获取官方来源；每源至少间隔 60 秒 |
-| `POST /api/geo/event-geometry` | `{"event_id":"已有NWS事件ID"}`，按需取官方区域，禁止任意 URL |
-| `POST /api/geo/address/geocode` | `{call_id,revision,address,consent:true}`，只发送所填地址，保留查询结果及精度限制 |
-| `POST /api/geo/address/confirm` | `{call_id,revision,label,lat,lon,reviewer,note,confirmed:true,accuracy_m?}`；note 至少 10 字符 |
-| `DELETE /api/geo/address/{call_id}` | 清除人工确认和地理编码候选，不删原文 |
-| `POST /api/geo/caller-location` | `{call_id,lat,lon,accuracy_m,captured_at,consent:true}`，只接受宿主活动通话和 5 分钟内浏览器定位 |
-| `DELETE /api/geo/caller-location/{call_id}` | 删除精确设备位置；审计日志不复制坐标 |
-| `POST /api/geo/reports` | 保存本地人工报告，字段见下例 |
-| `DELETE /api/geo/reports/{report_id}` | 删除人工报告 |
+(The comment on `base` reads: mounted example, `origin + "/plugins/map"`.)
 
-人工报告例子；没有半径时只保存报告点：
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /health` | Plugin version and liveness |
+| `GET /api/geo/state` | Current map, data sources, call addresses and area assessments, token |
+| `POST /api/geo/calls` | Full call snapshot; returns the map state and `upsert_result` |
+| `POST /api/geo/calls/{call_id}/active` | `{"active":true}` / `false`; returns the map state and `activity_result` |
+| `POST /api/geo/config` | `{"enabled":true,"providers":{"nws":true,"usgs":true}}`; fields may be omitted as needed |
+| `POST /api/geo/refresh` | Explicit manual fetch of official sources; at least 60 seconds between fetches per source |
+| `POST /api/geo/event-geometry` | `{"event_id":"existing NWS event ID"}`; fetches the official area on demand, arbitrary URLs are refused |
+| `POST /api/geo/address/geocode` | `{call_id,revision,address,consent:true}`; sends only the entered address, keeps the query result and its accuracy limits |
+| `POST /api/geo/address/confirm` | `{call_id,revision,label,lat,lon,reviewer,note,confirmed:true,accuracy_m?}`; note is at least 10 characters |
+| `DELETE /api/geo/address/{call_id}` | Clears the manual confirmation and geocoding candidates, keeps the original text |
+| `POST /api/geo/caller-location` | `{call_id,lat,lon,accuracy_m,captured_at,consent:true}`; accepts only calls the host marks active and browser fixes under 5 minutes old |
+| `DELETE /api/geo/caller-location/{call_id}` | Deletes the precise device location; the audit log does not copy the coordinates |
+| `POST /api/geo/reports` | Saves a local manual report; fields as in the example below |
+| `DELETE /api/geo/reports/{report_id}` | Deletes a manual report |
+
+Manual report example; without a radius only the report point is saved:
 
 ```json
 {"call_id":"call-123","label":"来电报告的事件","lat":34.02,"lon":-118.285,
@@ -136,33 +142,35 @@ with httpx.Client() as client:
  "zone_radius_m":200,"zone_level":"HIGH","valid_minutes":30}
 ```
 
-人工范围半径 10–10000 米、有效期 1–1440 分钟；有范围时必须提供 HTTPS 依据、核查说明并 `reviewed:true`。级别只允许 `INFO/WATCH/HIGH/CRITICAL`。插件不请求此依据链接，也不把它认证为官方内容；圆始终标为操作员定义、非官方。不要把示例证据网址用于实际核查。
+(In the example, `label` is "Incident reported by caller" and `note` says the operator verified the address by reading it back, the extent was recorded by the operator, and there is no official alert boundary yet.)
 
-## 如何读地图
+A manual zone radius is 10–10000 m and valid for 1–1440 minutes; a zone requires an HTTPS evidence link, a verification note and `reviewed:true`. The level must be one of `INFO/WATCH/HIGH/CRITICAL`. The plugin does not fetch the evidence link and does not certify it as official; the circle is always marked operator-defined and unofficial. Do not use the example evidence URL for real verification.
 
-| 维度 | 表示与规则 |
+## How to read the map
+
+| Dimension | Representation and rule |
 | --- | --- |
-| 没有坐标 | 留在逐通话列表，不使用县中心伪造位置 |
-| 空心菱形 | 有候选坐标但未确认，包括可选 Census 插值结果 |
-| 实心圆 | 人工确认当前修订，保留核查人和依据；不等于系统证明了真实现场位置 |
-| 叉形 | 地址存在冲突，需要人工核查 |
-| 灰 / 蓝 / 黄 / 橙 / 红 | UNKNOWN / INFO / WATCH / HIGH / CRITICAL，表示本原型区域关注等级，与通话评分独立 |
-| 蓝色设备点及误差圈 | 用户对活动通话单次授权的本网页设备位置，独立图层，不能定位远端电话 |
-| 虚线人工圆 | 非官方的操作员假设范围，过期后不参与当前区域等级 |
+| No coordinates | Stays in the per-call list; no fake position at the county center |
+| Hollow diamond | Candidate coordinates not yet confirmed, including optional Census interpolation results |
+| Solid circle | Manually confirmed for the current revision, with reviewer and evidence kept; it does not mean the system proved the real on-site location |
+| Cross | Conflicting addresses, needs manual review |
+| Gray / blue / yellow / orange / red | UNKNOWN / INFO / WATCH / HIGH / CRITICAL, this prototype's area attention level, independent of the call score |
+| Blue device dot with accuracy circle | This page's device location, authorized once by the user for an active call; a separate layer that cannot locate the remote phone |
+| Dashed manual circle | Unofficial operator-assumed extent; once expired it no longer contributes to the current area level |
 
-NWS 当前 Actual Alert/Update 必须有有效时间、区域几何、最近 5 分钟内成功获取的缓存以及可用 CAP 字段；Severity 的 Minor→INFO、Moderate→WATCH、Severe→HIGH、Extreme→CRITICAL。Urgency 只接受 Immediate / Expected；Certainty 为 Possible / Unlikely 时最高 WATCH，Observed / Likely 保留映射级别。取消、过期、未来生效、字段缺失、陈旧缓存不形成当前有效等级。对应 [CAP 1.2 字段规范](https://docs.oasis-open.org/emergency/cap/v1.2/CAP-v1.2-os.pdf)，**颜色分级是本产品的原型规则，不是官方统一应急分级**。
+A current NWS Actual Alert/Update needs a valid time window, area geometry, a cache fetched successfully within the last 5 minutes and usable CAP fields; Severity maps Minor→INFO, Moderate→WATCH, Severe→HIGH, Extreme→CRITICAL. Urgency accepts only Immediate / Expected; Certainty of Possible / Unlikely caps the level at WATCH, Observed / Likely keeps the mapped level. Cancelled, expired, not yet effective, missing fields or a stale cache yield no current valid level. This follows the [CAP 1.2 field specification](https://docs.oasis-open.org/emergency/cap/v1.2/CAP-v1.2-os.pdf); **the color grading is this product's prototype rule, not an official unified emergency classification**.
 
-点在多边形内、精度圆完全包含、边界附近可能重叠分别说明。使用 25 米原型边界保护距离；未知坐标精度不等于准确无误。多个有效匹配取最高背景级别。未确认坐标仅为条件性关联，冲突或过时人工确认使当前汇总返回 UNKNOWN。无匹配 / 灰色永远不等于安全。合成人工范围不进入当前区域等级。
+Point inside polygon, accuracy circle fully contained, and possible overlap near the boundary are each stated separately. A 25 m prototype boundary guard distance is used; unknown coordinate accuracy does not mean the coordinates are exact. With several valid matches the highest background level wins. Unconfirmed coordinates give only a conditional match; a conflicting or outdated manual confirmation makes the current summary return UNKNOWN. No match / gray never means safe. Synthetic manual zones do not enter the current area level.
 
-**没有实测地址准确率，也不输出虚构百分比。** 地址规则的单元测试是功能验证，不是总体真实通话准确率评测。Census 使用 TIGER 街道范围插值，范围可能包含未建成门牌；匹配成功不证明来电者在该处，见 [Census 地理编码说明](https://www.census.gov/programs-surveys/geography/technical-documentation/complete-technical-documentation/census-geocoder.html)。查询只有明确 `consent:true` 才发送当前输入框地址，完整通话原文不会发送给地理编码服务。
+**There is no measured address accuracy, and no invented percentage is reported.** The unit tests for the address rules are functional checks, not an overall accuracy evaluation on real calls. Census uses TIGER street-range interpolation; a range may include unbuilt house numbers, and a successful match does not prove the caller is there, see the [Census geocoder documentation](https://www.census.gov/programs-surveys/geography/technical-documentation/complete-technical-documentation/census-geocoder.html). A query sends the address currently in the input box only with an explicit `consent:true`; the full call text is never sent to the geocoding service.
 
-官方覆盖仅限 NWS 与 USGS。NWS Red Flag Warning 是[火险气象条件](https://www.weather.gov/safety/wildfire-ww)，不是火场。USGS 只取 LA County 县内近 7 天 M≥2.5 震中，震中不能推导当地震动强度、受损范围，也漏掉县外震中的本地震感；见 [USGS 震级与烈度说明](https://www.usgs.gov/programs/earthquake-hazards/earthquake-magnitude-energy-release-and-shaking-intensity)。没有接入完整官方火场、疏散区、ShakeMap 或实时枪击警戒区。所有来源链接、采集时间、过期及缓存失败都会显示。
+Official coverage is limited to NWS and USGS. An NWS Red Flag Warning is a [fire-weather condition](https://www.weather.gov/safety/wildfire-ww), not a fire perimeter. USGS provides only epicenters of M≥2.5 events within LA County in the last 7 days; an epicenter cannot tell local shaking intensity or the damage extent, and it misses shaking felt locally from epicenters outside the county; see the [USGS note on magnitude and intensity](https://www.usgs.gov/programs/earthquake-hazards/earthquake-magnitude-energy-release-and-shaking-intensity). Full official fire perimeters, evacuation zones, ShakeMap or real-time shooting alert areas are not connected. Every source link, fetch time, expiry and cache failure is displayed.
 
-## 网络与数据许可
+## Network and data licenses
 
-NWS / USGS 只在手动刷新时请求固定官方 HTTPS 端点；区域加载只接受 NWS 的固定 CA zone URL；Census 仅在显式地址查询时调用。底图默认关闭，勾选后浏览器请求 OpenStreetMap 当前视野图块，第三方能看到网络 IP 和地图视野；不发送通话正文和自定义标记。不会进行预下载或离线图块抓取。
+NWS / USGS are requested only on manual refresh, from fixed official HTTPS endpoints; area loading accepts only NWS's fixed CA zone URLs; Census is called only on an explicit address query. The base map is off by default; when ticked, the browser requests OpenStreetMap tiles for the current view, and the third party sees the network IP and the map view; call text and custom markers are not sent. There is no pre-download or offline tile scraping.
 
-LA County 县界及来源记录保存在包内 `data/`。Leaflet 1.9.4 JS、CSS 和 BSD 许可在 `static/vendor/leaflet/`，地图保留 LA County / OSM 署名。`plugin.json` 是主体集成的机器可读声明。网络源规则和获取时间约束均保留；官方数据服务变化时需重新验证适配器。
+The LA County boundary and its source record are stored in the package's `data/`. Leaflet 1.9.4 JS, CSS and its BSD license are in `static/vendor/leaflet/`; the map keeps the LA County / OSM attribution. `plugin.json` is the machine-readable declaration for host integration. The network source rules and fetch-time constraints are kept; when an official data service changes, re-validate the adapter.
 
 ## Automatic lookup (host-driven; added in this repository)
 
@@ -179,11 +187,11 @@ The plugin makes no automatic requests unless its host calls `await app.state.ge
 
 Calls the host marks active with `set_active_call` are listed newest first in a strip above the map, each with "Show on map" when it has a point. Their cards come first with an "In progress" tag, and their markers carry a teal ring and sit on top. The 211 desk marks a call active while its caller can still speak.
 
-## 验证
+## Verification
 
 ```powershell
 python -m pip install ".[test]"
 python -m pytest -q
 ```
 
-测试覆盖地址候选/冲突、多边形与边界、缓存与有效期、Census 只发送明确地址、修订幂等和过时确认、迟到查询丢弃、设备授权、独立导入、SQLite 重启和 ASGI 挂载前缀。所有网络用 mock，不调用真实 GPS、麦克风或外部付费服务。真实现场识别准确率、完整灾害覆盖和大规模多租户部署不在本次验证范围。
+The tests cover address candidates/conflicts, polygons and boundaries, caching and validity windows, Census receiving only an explicit address, revision idempotence and outdated confirmations, discarding late query results, device authorization, standalone import, SQLite restart and the ASGI mount prefix. All network access is mocked; no real GPS, microphone or external paid service is called. Real on-site recognition accuracy, complete hazard coverage and large-scale multi-tenant deployment are outside the scope of this verification.

@@ -1,10 +1,12 @@
-# 独立通话打分器 · crisisfusion-scoring 1.0.0
+English · [中文](README.zh-CN.md)
 
-这是可装入其他 Python / Web 主体的独立插件。包含确定性文字提取、每通话 0–100 人工关注指数、未解决需求、修订历史、去重、队列与人工操作审计；自带一个可通过 iframe 嵌入的轻量界面。**不依赖原 CrisisFusion 项目、地图插件、语音插件或 API Key。**
+# Standalone call scorer · crisisfusion-scoring 1.0.0
 
-## 安装与独立运行
+This is a standalone plugin that can be dropped into another Python / web host. It provides deterministic text extraction, a 0–100 human-attention index per call, open needs, revision history, deduplication, a queue and an audit trail of human actions; it ships with a lightweight UI that can be embedded through an iframe. **It does not depend on the original CrisisFusion project, the map plugin, the voice plugin or any API key.**
 
-需要 Python 3.11+。建议在宿主的虚拟环境中安装，选择以下一种：
+## Installation and standalone run
+
+Requires Python 3.11+. Install into the host's virtual environment, using one of the following:
 
 ```powershell
 # 安装打包的 wheel（把路径换成实际解压路径）
@@ -16,11 +18,11 @@ python -m pip install .
 python -m crisisfusion_scoring --host 127.0.0.1 --port 8811 --db work/scoring.sqlite3
 ```
 
-打开 <http://127.0.0.1:8811/>。停止进程可按 Ctrl+C。`--db` 是本插件自己的数据库路径，目录会按需创建；`:memory:` 适合临时测试。源码目录和数据库可以放在不同位置。请勿将原系统或其他插件正在使用的数据库传给本插件。
+Open <http://127.0.0.1:8811/>. Press Ctrl+C to stop the process. `--db` is the path of this plugin's own database; the directory is created on demand, and `:memory:` suits throwaway testing. The source directory and the database can live in different places. Do not pass this plugin a database that the original system or another plugin is using.
 
-运行依赖为 FastAPI 和 Uvicorn；wheel 本身不包含这些第三方依赖，首次 pip 安装需要它们已在环境中或可由包源下载。所有评分运算在本地进行。
+Runtime dependencies are FastAPI and Uvicorn; the wheel itself does not bundle these third-party packages, so the first pip install needs them already present in the environment or downloadable from the package index. All scoring runs locally.
 
-## 方式一：Python 直接调用
+## Option 1: Call from Python directly
 
 ```python
 from crisisfusion_scoring import ScoringPlugin, extract_call, get_policy
@@ -40,11 +42,11 @@ print(extract_call("Library hours please.", language="en"))
 print(get_policy())
 ```
 
-公开入口：`ScoringPlugin`、兼容的 `Engine`、`extract_call`、`assess_call`、`get_policy`、`create_app`。推荐用 `ScoringPlugin` 管理完整生命周期；`Engine` 与原成熟生命周期实现等价。底层纯函数 `assess_call(call, needs, *, as_of, wait_by_need, overdue_after_seconds=120)` 面向已存在的证据和需求结构，不接受任意模型分数来替代规则。导入包、导入 CLI 均不会创建数据库或启动服务；实例化插件 / 调用 `create_app` 才创建状态。
+Public entry points: `ScoringPlugin`, the compatible `Engine`, `extract_call`, `assess_call`, `get_policy`, `create_app`. `ScoringPlugin` is the recommended way to manage the full lifecycle; `Engine` is equivalent to the original, mature lifecycle implementation. The underlying pure function `assess_call(call, needs, *, as_of, wait_by_need, overdue_after_seconds=120)` works on existing evidence and need structures and does not accept arbitrary model scores as a substitute for the rules. Importing the package or the CLI never creates a database or starts a server; state is created only when the plugin is instantiated or `create_app` is called.
 
-同一 `call_id` 每次更新使用更高的正整数 `revision`；`text` 传来电者**累计转写**。同一版本不同内容会被拒绝；相同事件重复投递不会重复创建需求。`event_id` 可由宿主提供；同一事件 ID 不可代表不同内容。更正或无害的新句子不会自动解决旧危险需求，需要明确人工操作。
+Each update to the same `call_id` uses a higher positive integer `revision`; `text` carries the caller's **cumulative transcript**. Different content under the same revision is rejected; redelivering the same event does not create duplicate needs. `event_id` may be supplied by the host; the same event ID must not stand for different content. A correction or a harmless new sentence does not automatically resolve an earlier danger need; that requires an explicit human action.
 
-## 方式二：挂载到现有 FastAPI 主体
+## Option 2: Mount into an existing FastAPI host
 
 ```python
 from contextlib import asynccontextmanager
@@ -62,28 +64,28 @@ app = FastAPI(lifespan=lifespan)
 app.mount("/plugins/scoring", scoring)
 ```
 
-宿主页面嵌入：
+Embedding in a host page:
 
 ```html
 <iframe src="/plugins/scoring/" title="通话打分器"
         style="width:100%;height:900px;border:0"></iframe>
 ```
 
-UI 的脚本、样式与 API 均采用相对 URL，支持任意挂载前缀；入口保留末尾 `/`。挂载子应用不会自动运行子应用生命周期，宿主应在自己关闭时调用 `scoring.state.plugin.close()`。不要多次关闭同一实例。界面不依赖宿主的导航或 DOM；宿主写入数据后点击“刷新”即可查看最新队列。
+The UI's scripts, styles and API all use relative URLs, so any mount prefix works; keep the trailing `/` on the entry URL. Mounting a sub-application does not run its lifespan automatically, so the host should call `scoring.state.plugin.close()` when it shuts down. Do not close the same instance more than once. The UI does not depend on the host's navigation or DOM; after the host writes data, click "Refresh" to see the latest queue.
 
-默认仅接受 `127.0.0.1`、`localhost` 和 `::1` 的 Host。生产宿主可以传 `allowed_hosts=["your-host.example"]`，这只是 Host 白名单，**不提供账号、角色、TLS 或用户隔离**。将插件放在宿主既有认证与授权之后；不要把此演示实例直接公开到互联网。需要多租户时由宿主隔离实例和数据库。
+By default only the Hosts `127.0.0.1`, `localhost` and `::1` are accepted. A production host can pass `allowed_hosts=["your-host.example"]`; this is only a Host allowlist and **provides no accounts, roles, TLS or user isolation**. Place the plugin behind the host's existing authentication and authorization; do not expose this demo instance directly to the internet. For multi-tenancy, the host isolates instances and databases.
 
-## 方式三：其他语言主体通过 HTTP 接入
+## Option 3: Hosts in other languages via HTTP
 
-Node、Java、.NET 等主体可以启动本地子服务，或通过同源反向代理挂载它。浏览器端不能直接跨域写入；建议宿主后端调用或同源代理。即使由后端调用，写请求也必须携带 token。
+Node, Java, .NET and other hosts can start it as a local sub-service or mount it through a same-origin reverse proxy. The browser cannot write cross-origin directly; the host backend should make the calls, or use a same-origin proxy. Even when called from the backend, write requests must carry the token.
 
-1. GET `/api/scoring/status`，读取 `csrf_token`、`csrf_header` 与 `store_id`。
-2. POST 请求设置 `Content-Type: application/json` 和 `X-CrisisFusion-Scoring: <token>`。
-3. 浏览器的 `Origin` 必须匹配实际请求的 scheme、hostname、port；挂载路径不属于 Origin。普通后端请求可以没有 Origin。重启后 token 会更换，重新读取即可。
+1. GET `/api/scoring/status` and read `csrf_token`, `csrf_header` and `store_id`.
+2. On POST requests set `Content-Type: application/json` and `X-CrisisFusion-Scoring: <token>`.
+3. The browser's `Origin` must match the scheme, hostname and port of the actual request; the mount path is not part of the Origin. Plain backend requests may omit Origin. The token changes after a restart; just read it again.
 
-`store_id` 是保存在本插件数据库内的 UUID（Python 对应 `plugin.store_id`），同一个数据库重启后不变；创建新数据库或调用 `ScoringPlugin.reset()` 后会改变。可靠中继应把自己的消费游标同时绑定到源事件流、目标 URL 和这个消费者身份。身份变化时停止并由宿主决定从哪个事件重新导入，不能沿用旧游标跳过历史。普通文件备份会保留原身份；回滚同一身份的旧备份仍需要宿主同步回滚或重建游标。
+`store_id` is a UUID stored inside this plugin's database (`plugin.store_id` in Python); it stays the same across restarts of the same database and changes when a new database is created or `ScoringPlugin.reset()` is called. A reliable relay should bind its consumption cursor to the source event stream, the target URL and this consumer identity together. When the identity changes, stop and let the host decide from which event to re-import; the old cursor must not be reused to skip history. An ordinary file backup keeps the original identity; rolling back to an older backup of the same identity still requires the host to roll back or rebuild its cursor in step.
 
-示例：
+Example:
 
 ```python
 import httpx
@@ -101,22 +103,22 @@ with httpx.Client(base_url="http://127.0.0.1:8811") as client:
     print(result["call"]["priority_assessment"]["score"])  # 初始 80
 ```
 
-| 方法与相对路径 | 输入 / 返回 |
+| Method and relative path | Input / returns |
 |---|---|
-| GET `/health` | 插件、API、提取规则、评分规则版本 |
-| GET `/api/scoring/status` | CSRF token、header 名、持久化 `store_id`、是否需要 Key |
-| GET `/api/scoring/policy` | 实际运行的分数区间、参数、约束 |
-| POST `/api/scoring/calls` | 通话 JSON；返回 `call`、`incident`、`needs`、`alerts`、`duplicate` |
-| GET `/api/scoring/state` | `calls`、`needs`、`queue_calls`、`audit`、规则与指标 |
-| GET `/api/scoring/calls/{call_id}/priority` | `assessment`、`revisions`、该通话全部 `needs` |
-| POST `/api/scoring/needs/{need_id}/actions` | 显式人工操作，带操作者、理由、可选事件 ID |
-| POST `/api/scoring/settings` | 已知配置字段，例如 `{"available_agents": 2}` |
-| POST `/api/scoring/recompute` | `{}` 或 `{"call_id":"call-001"}`，重算已存证据 |
-| GET `/api/scoring/metrics` | 本地可观察指标；真实话务成功率仍为 null |
+| GET `/health` | Plugin, API, extraction-rule and scoring-rule versions |
+| GET `/api/scoring/status` | CSRF token, header name, persistent `store_id`, whether a key is required |
+| GET `/api/scoring/policy` | The score bands, parameters and constraints actually in effect |
+| POST `/api/scoring/calls` | Call JSON; returns `call`, `incident`, `needs`, `alerts`, `duplicate` |
+| GET `/api/scoring/state` | `calls`, `needs`, `queue_calls`, `audit`, rules and metrics |
+| GET `/api/scoring/calls/{call_id}/priority` | `assessment`, `revisions`, all `needs` of that call |
+| POST `/api/scoring/needs/{need_id}/actions` | Explicit human action with actor, reason and optional event ID |
+| POST `/api/scoring/settings` | Known settings fields, e.g. `{"available_agents": 2}` |
+| POST `/api/scoring/recompute` | `{}` or `{"call_id":"call-001"}`; recomputes from stored evidence |
+| GET `/api/scoring/metrics` | Locally observable metrics; the real call-handling success rate stays null |
 
-接收通话字段：`call_id`、`text`（最多 20000 字符）、`language`（`en/es/mixed/unknown`）、`location`（可含 `label/lat/lon/source`）、`timestamp`（可选 ISO 时间）、`revision`、`event_id`、`input_mode`（`text/replay/simulated_voice/browser_voice`）、`speaker`。其他推理或“标准答案”字段会被拒绝。中文应设 `unknown`，需要人工核查。传入真实语音时只应发送来电者最终转写，宿主不要将 Agent 自己说的话作为来电证据。
+Accepted call fields: `call_id`, `text` (at most 20000 characters), `language` (`en/es/mixed/unknown`), `location` (may contain `label/lat/lon/source`), `timestamp` (optional ISO time), `revision`, `event_id`, `input_mode` (`text/replay/simulated_voice/browser_voice`), `speaker`. Any other inference or "ground truth" fields are rejected. Chinese should be set to `unknown` and needs human review. When feeding real voice, send only the caller's final transcript; the host must not submit what the agent itself said as caller evidence.
 
-典型评分输出节选：
+Excerpt of a typical scoring output:
 
 ```json
 {
@@ -129,42 +131,42 @@ with httpx.Client(base_url="http://127.0.0.1:8811") as client:
 }
 ```
 
-完整 `priority_assessment` 同时含 `components`、原句证据、规则 ID、修订号、时间、不确定性、未解决需求 ID、队列资格、等待时间、逾时和人工排序记录。已全部解决时 `assessment` 为 `null`，历史不丢失。
+The full `priority_assessment` also contains `components`, the verbatim evidence sentences, rule IDs, revision number, time, uncertainty, open need IDs, queue eligibility, wait time, overdue state and manual ordering records. Once everything is resolved, `assessment` is `null`; history is not lost.
 
-人工解决某一需求：
+Human resolution of a need:
 
 ```json
 {"action":"resolve","actor":"operator-17","note":"已与来电者核实此项需求已经解决","event_id":"review-001"}
 ```
 
-人工升级：
+Human escalation:
 
 ```json
 {"action":"escalate","actor":"operator-17","note":"核实到当前受困风险","target_category":"IMMEDIATE_HUMAN"}
 ```
 
-同类别人工顺序：`{"action":"override","actor":"operator-17","note":"人工排序依据","manual_order":-1}`。`manual_order` 仅在当前类别生效，不能把低优先级放到高优先级之前。
+Manual ordering within a category: `{"action":"override","actor":"operator-17","note":"人工排序依据","manual_order":-1}`. `manual_order` only takes effect within the current category; it cannot place a lower-priority call ahead of a higher-priority one.
 
-保留的模拟话务动作包括 `request_transfer` → `simulate_dial` → `simulate_bridge`，以及 `simulate_no_answer`、`simulate_failure`、`interrupted`、`request_callback`、`callback_no_answer`、`callback_connected` 和 `confirm_incident`。它们用于验证未解决需求与队列生命周期，**不会拨号、转接或派遣人员**；语音插件与电话运营商应由宿主另行对接。
+The retained simulated call-handling actions are `request_transfer` → `simulate_dial` → `simulate_bridge`, plus `simulate_no_answer`, `simulate_failure`, `interrupted`, `request_callback`, `callback_no_answer`, `callback_connected` and `confirm_incident`. They exist to exercise the open-need and queue lifecycle and **do not dial, transfer or dispatch anyone**; the voice plugin and the telephony carrier are integrated separately by the host.
 
-## 评分与限制
+## Scoring and limitations
 
-| 类别 | 分数段 | 含义 |
+| Category | Score band | Meaning |
 |---|---|---|
-| IMMEDIATE_HUMAN | 80–100 | 当前明确危险 / 受困等规则触发，立即人工关注 |
-| HUMAN_VERIFY | 50–79 | 危险线索、矛盾、未知语义等需要人工核查 |
-| ROUTINE_HUMAN | 20–49 | 常规人工请求 |
-| AUTOMATION_ELIGIBLE | 0–19 | 全文符合允许的服务意图，未出现未解释内容 |
+| IMMEDIATE_HUMAN | 80–100 | A rule for current explicit danger / entrapment etc. fired; immediate human attention |
+| HUMAN_VERIFY | 50–79 | Danger cues, contradictions, unknown semantics etc. need human verification |
+| ROUTINE_HUMAN | 20–49 | Routine human request |
+| AUTOMATION_ELIGIBLE | 0–19 | The whole text matches an allowed service intent with no unexplained content |
 
-分数先受硬类别约束，再按每等待一分钟 +1（最多 +15）及跟进项 +5 计算，并封顶于本类别。队列仍按类别、显式同类别人工顺序、最长累计等待、稳定 ID 排列，不把一个浮点“风险概率”当作唯一排序依据。缺地址、语言身份、人员短缺、重复报告不会用于扣减危险优先级。
+The score is first constrained by the hard category, then adds +1 per minute of waiting (at most +15) and +5 per follow-up item, and is capped within its category. The queue is still ordered by category, explicit manual order within a category, longest cumulative wait, then stable ID; a single floating-point "risk probability" is never the sole sort key. A missing address, language identity, staff shortage or repeated reports are never used to reduce a danger priority.
 
-此版本迁移了 v0.5 的评分、提取和生命周期代码，规则版本保持 `prototype-2026-10-17-v4.1` / `human-attention-2026-10-17-v1`。它是有限英语/西班牙语规则原型，不是经过临床或调度标准认证的系统。单元测试证明已覆盖情形的行为，不代表真实来电识别准确率；不输出虚构的准确率或死亡风险。
+This version migrates the scoring, extraction and lifecycle code from v0.5; the rule versions remain `prototype-2026-10-17-v4.1` / `human-attention-2026-10-17-v1`. It is a limited English/Spanish rule prototype, not a system certified against clinical or dispatch standards. The unit tests prove the behavior of the covered cases; they do not represent recognition accuracy on real calls, and no fabricated accuracy or mortality risk is reported.
 
-SQLite 保存原文、修订、地点、需求和审计，不保存音频，不调用外部服务。数据保留、访问控制、备份与删除策略由宿主配置。`ScoringPlugin` 的 Python API 是可信宿主接口，没有 HTTP token 检查；不要将不可信输入变成任意 Python 调用。
+SQLite stores the original text, revisions, locations, needs and audit records; it stores no audio and calls no external services. Data retention, access control, backup and deletion policies are configured by the host. The `ScoringPlugin` Python API is a trusted-host interface with no HTTP token check; do not turn untrusted input into arbitrary Python calls.
 
-每个数据库仅由**单一进程 / 单个活动 Engine 实例**拥有。进程内 RLock 支持并发调用，但没有跨进程状态合并；不要用多个 Uvicorn workers 或多个插件实例共享同一个文件。需要多进程扩展时应实现宿主状态服务，而不是复制本地数据库连接。
+Each database is owned by **a single process / a single active Engine instance**. The in-process RLock supports concurrent calls, but there is no cross-process state merging; do not share the same file across multiple Uvicorn workers or multiple plugin instances. Scaling to multiple processes requires a host-side state service, not copies of the local database connection.
 
-## 验证与重新构建
+## Verification and rebuild
 
 ```powershell
 python -m pip install -e ".[dev]"
@@ -172,4 +174,4 @@ python -m pytest -q
 python -m build --wheel
 ```
 
-测试覆盖原评分算术与证据、未解决需求保留、修订/事件去重、并发持久化、人工升级与队列、断线/回拨模拟、跨域拒绝、CSRF、不同挂载前缀、实例隔离以及无导入副作用。机器可读插件入口见包内 `plugin.json`。此插件不导入评测标签、地图、语音或宿主的 `app` 包。
+The tests cover the original scoring arithmetic and evidence, retention of open needs, revision/event deduplication, concurrent persistence, human escalation and the queue, disconnect/callback simulation, cross-origin rejection, CSRF, different mount prefixes, instance isolation and import side-effect freedom. The machine-readable plugin entry is in the package's `plugin.json`. This plugin does not import the evaluation labels, the map, the voice plugin or the host's `app` package.

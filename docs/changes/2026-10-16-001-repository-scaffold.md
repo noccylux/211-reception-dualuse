@@ -17,7 +17,7 @@
 
 ## Decision
 
-* Kept the WSL `WSL` launcher, its self-test and the bare-Python
+* Kept the WSL launcher, its self-test and the bare-Python
   guard hook; removed autoalpha-specific scripts, module tiers and the
   concept/contract design hierarchy, which are too heavy for 48 hours.
 * Stack chosen by the user: FastAPI backend (also the webhook endpoint for

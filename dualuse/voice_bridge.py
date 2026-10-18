@@ -22,7 +22,9 @@ log = logging.getLogger("voice_bridge")
 
 # Spoken at once while the desk's interview runs, which can take seconds.
 ACK = "Okay."
-HANDOFF = "Transferring you to a human operator now. This is the end of the demo."
+# Voice transfer is not connected, so it says only what is true: the transfer is starting and
+# the operator's desk shows what the caller said. It claims no human is on the line yet.
+HANDOFF = "Transferring you to a human operator now. They have the details you gave me."
 STILL_HERE = "I'm still here, and you remain in the queue."
 NOT_RECORDED ="I could not record that. You remain in the queue."
 DESK_DOWN = "The reception system is having a problem right now. You have not been removed from the queue."

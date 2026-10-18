@@ -274,6 +274,7 @@ def test_an_operator_reservation_interrupts_the_caller_once(bridge, desk):
         assert desk.post("/operator/free", json={"operator_id": "operator-1"}).json()["handoff"]
         interrupt = ws.receive_json()
         assert interrupt["response_type"] == "agent_interrupt" and interrupt["content"] == HANDOFF
+        assert "human operator" in HANDOFF and "demo" not in HANDOFF.lower()
         ws.send_json(turn(1, "hello?"))
         reply = final_response(ws)
         assert reply["content"] == HANDOFF

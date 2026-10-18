@@ -39,6 +39,10 @@
 * The playbook now says to repeat the emergency number only in the turn where
   danger is first reported. In the first live run the agent repeated it in
   three replies of a routine flooding call.
+* Phone pickup line, on the user's request later that evening: "Transferring
+  you to a human operator now. They have the details you gave me." It
+  replaces "… This is the end of the demo." Voice transfer is still not
+  connected, so the line does not claim that a person has answered.
 * Rejected: having the code ask the questions word for word. Replies would no
   longer acknowledge what the caller said, and life-safety turns already
   change the order (location right after danger).
@@ -55,5 +59,11 @@
   `people` was "4, including a wife and two children". 911 was not repeated
   after the welcome. Fire with a person inside: tier IMMEDIATE, one 911
   referral, then the location and people questions.
-* Not verified: a real phone call. The running desk (8000) and bridge (8010)
-  still run the previous code until they are restarted.
+* Pickup line: full `tests/` **493 passed**. The bridge tests take an operator
+  reservation through the desk API and receive the new line as the interrupt
+  and as the reply to later speech.
+* Deployment: the welcome and intake change went live with
+  [record 024](2026-10-17-024-automatic-map-location.md)'s restarts at about
+  18:10 PT. The pickup line is not deployed until the bridge (8010) is
+  restarted.
+* Not verified: a real phone call with either change.
